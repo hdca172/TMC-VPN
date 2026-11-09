@@ -1,37 +1,31 @@
-name: TMC VPN - APK de prueba
+name: TMC VPN - V3 APK CI
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, feature/v3-ultimate]
+  pull_request:
 jobs:
   build:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
     steps:
-      - name: Descargar codigo
-        uses: actions/checkout@v4
-      - name: Configurar Java 17
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-      - name: Configurar Gradle
-        uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Comprobar SDK Android
-        shell: bash
+      - name: Verify Android SDK
         run: |
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          test -d "$ANDROID_HOME" || { echo "No se encontro Android SDK"; exit 1; }
-          ls "$ANDROID_HOME/platforms" || true
-          ls "$ANDROID_HOME/build-tools" || true
-      - name: Compilar APK de prueba
+          test -d "$ANDROID_HOME"
+          ls "$ANDROID_HOME/platforms"
+      - name: Build debug APK
         run: gradle :app:assembleDebug --no-daemon --stacktrace
-      - name: Publicar APK
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: TMC-VPN-Fase1-APK
+          name: TMC-VPN-V3-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
