@@ -5,22 +5,32 @@ on:
     branches: [main]
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - name: Descargar codigo
+        uses: actions/checkout@v4
+      - name: Configurar Java 17
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
-      - uses: gradle/actions/setup-gradle@v4
+      - name: Configurar Gradle
+        uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Build APK
+      - name: Comprobar SDK Android
+        shell: bash
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          test -d "$ANDROID_HOME" || { echo "No se encontro Android SDK"; exit 1; }
+          ls "$ANDROID_HOME/platforms" || true
+          ls "$ANDROID_HOME/build-tools" || true
+      - name: Compilar APK de prueba
         run: gradle :app:assembleDebug --no-daemon --stacktrace
-      - uses: actions/upload-artifact@v4
+      - name: Publicar APK
+        uses: actions/upload-artifact@v4
         with:
           name: TMC-VPN-Fase1-APK
           path: app/build/outputs/apk/debug/app-debug.apk
