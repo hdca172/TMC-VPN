@@ -10,8 +10,8 @@ android {
         applicationId = "com.tmc.vpn"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "3.0.0"
+        versionCode = 4
+        versionName = "3.1.0"
     }
     buildFeatures { compose = true }
     compileOptions {
@@ -26,4 +26,5 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
+    implementation("com.wireguard.android:tunnel:1.0.20230706")
 }
