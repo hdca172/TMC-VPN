@@ -1,11 +1,14 @@
 package com.tmc.vpn
 
 import android.content.Context
+import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -23,54 +26,86 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.tmc.vpn.data.ServerCatalog
-import com.tmc.vpn.data.ServerStatus
+import com.tmc.vpn.vpn.TunnelStatus
+import com.tmc.vpn.vpn.WireGuardController
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private val Navy = Color(0xFF081426)
 private val Panel = Color(0xFF162943)
 private val Cyan = Color(0xFF21D9F5)
 private val Green = Color(0xFF4CE4B2)
 private val Red = Color(0xFFF04A64)
+private val pages = listOf("Inicio", "Servidores", "Diagnóstico", "Estadísticas", "Seguridad", "Ajustes", "Cuenta")
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { UltimateApp(this) }
+        val controller = WireGuardController(this)
+        setContent { UltimateApp(this, controller) }
     }
 }
 
-private val pages = listOf("Inicio", "Servidores", "Diagnóstico", "Estadísticas", "Seguridad", "Ajustes", "Cuenta")
-
 @Composable
-private fun UltimateApp(context: Context) {
+private fun UltimateApp(context: Context, controller: WireGuardController) {
     var page by remember { mutableIntStateOf(0) }
-    var showWelcome by remember { mutableStateOf(true) }
+    var welcome by remember { mutableStateOf(true) }
     var refresh by remember { mutableIntStateOf(0) }
-    var favorites by remember { mutableStateOf(setOf<String>()) }
-    var notifications by remember { mutableStateOf(true) }
+    var hasProfile by remember { mutableStateOf(false) }
+    var tunnelStatus by remember { mutableStateOf(TunnelStatus.DISCONNECTED) }
+    var message by remember { mutableStateOf("Sin perfil WireGuard") }
+    var busy by remember { mutableStateOf(false) }
+    var notificationPreference by remember { mutableStateOf(true) }
+    val scope = rememberCoroutineScope()
     val network = remember(refresh) { networkType(context) }
-    val servers = remember { ServerCatalog.initial() }
-
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            runCatching {
+                val text = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                    ?: error("No se pudo leer el archivo")
+                controller.importProfile(text).getOrThrow()
+            }.onSuccess {
+                hasProfile = true
+                tunnelStatus = TunnelStatus.DISCONNECTED
+                message = "Perfil importado en memoria. Conecta solo a servidores de confianza."
+            }.onFailure { message = "Error al importar: ${it.localizedMessage ?: "perfil inválido"}" }
+        }
+    }
+    fun toggleConnection() {
+        if (busy || !hasProfile) return
+        busy = true
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                if (tunnelStatus == TunnelStatus.CONNECTED) controller.disconnect() else controller.connect()
+            }
+            tunnelStatus = controller.status
+            message = result.fold(
+                onSuccess = { if (tunnelStatus == TunnelStatus.CONNECTED) "Túnel WireGuard activado" else "Túnel desconectado" },
+                onFailure = { "Error VPN: ${it.localizedMessage ?: "desconocido"}" }
+            )
+            busy = false
+        }
+    }
     MaterialTheme(colorScheme = darkColorScheme(primary = Cyan, background = Navy, surface = Panel)) {
         Column(Modifier.fillMaxSize().background(Navy).padding(16.dp)) {
-            if (showWelcome) {
+            if (welcome) {
                 Spacer(Modifier.weight(1f))
                 Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                     Image(painterResource(R.drawable.tmc_shield), contentDescription = "TMC VPN", modifier = Modifier.size(166.dp))
                     Text("TMC VPN ULTIMATE", fontWeight = FontWeight.Black, fontSize = 26.sp)
-                    Text("Protección, control y transparencia", color = Cyan)
+                    Text("WireGuard • Conexión privada", color = Cyan)
                 }
-                Spacer(Modifier.height(32.dp))
-                Text("Bienvenido. Configura un servidor WireGuard autorizado para activar el túnel VPN.", textAlign = TextAlign.Center, color = Color.LightGray)
+                Spacer(Modifier.height(28.dp))
+                Text("Bienvenido. Importa un perfil WireGuard autorizado. Una VPN requiere conexión a Internet y no genera datos móviles gratuitos.", textAlign = TextAlign.Center, color = Color.LightGray)
                 Spacer(Modifier.weight(1f))
-                Button(onClick = { showWelcome = false }, modifier = Modifier.fillMaxWidth()) { Text("Comenzar") }
-                Spacer(Modifier.height(16.dp))
+                Button(onClick = { welcome = false }, modifier = Modifier.fillMaxWidth()) { Text("Comenzar") }
             } else {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Image(painterResource(R.drawable.tmc_shield), contentDescription = "Logo", modifier = Modifier.size(62.dp))
                     Column {
                         Text("TMC VPN", fontSize = 25.sp, fontWeight = FontWeight.Black)
-                        Text("ULTIMATE 3.0 • VPN sin configurar", fontSize = 11.sp, color = Color.LightGray)
+                        Text("ULTIMATE 3.1 • WireGuard", fontSize = 11.sp, color = Color.LightGray)
                     }
                 }
                 Spacer(Modifier.height(12.dp))
@@ -79,78 +114,67 @@ private fun UltimateApp(context: Context) {
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
                     when (page) {
                         0 -> {
-                            Spacer(Modifier.height(12.dp))
-                            Image(painterResource(R.drawable.tmc_shield), contentDescription = null, modifier = Modifier.size(150.dp))
-                            Text("DESCONECTADO", color = Red, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                            Text("No hay túnel VPN activo", color = Color.LightGray)
+                            Spacer(Modifier.height(14.dp))
+                            Image(painterResource(R.drawable.tmc_shield), contentDescription = null, modifier = Modifier.size(140.dp))
+                            val active = tunnelStatus == TunnelStatus.CONNECTED
+                            Text(if (active) "TÚNEL ACTIVO" else "DESCONECTADO", color = if (active) Green else Red, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                            Text(message, textAlign = TextAlign.Center, color = Color.LightGray)
                             Spacer(Modifier.height(16.dp))
-                            Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) { Text("Conexión inteligente — no disponible") }
-                            Info("Servidor seleccionado", "Ninguno. Principal y respaldo sin configurar.")
-                            Info("Conexión de red", network)
-                            Info("Protección VPN", "Inactiva. No se cifran datos mediante TMC VPN.")
+                            Button(onClick = { toggleConnection() }, enabled = hasProfile && !busy, modifier = Modifier.fillMaxWidth()) {
+                                Text(if (busy) "Procesando…" else if (active) "Desconectar" else "Conectar WireGuard")
+                            }
+                            Button(onClick = { picker.launch(arrayOf("*/*")) }) { Text("Importar perfil .conf") }
+                            Info("Red", network)
+                            Info("Estado", if (active) "WireGuard reporta túnel UP. Comprueba conectividad y DNS." else "No hay túnel activo.")
                         }
                         1 -> {
-                            Text("Infraestructura VPN", color = Color.LightGray)
-                            servers.forEach { server ->
-                                Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth().padding(vertical = 7.dp)) {
-                                    Column(Modifier.padding(16.dp)) {
-                                        Text(server.name, fontWeight = FontWeight.Bold, color = Green)
-                                        Text(if (server.status == ServerStatus.READY) "Configurado" else "Pendiente de configurar")
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(if (server.id in favorites) "★ Favorito" else "☆ Añadir favorito", modifier = Modifier.clickable {
-                                                favorites = if (server.id in favorites) favorites - server.id else favorites + server.id
-                                            }, color = Cyan)
-                                        }
-                                    }
-                                }
-                            }
-                            Info("Servidores personalizados", "Sin perfiles importados. La importación WireGuard se implementará al integrar el backend.")
-                            Info("Selección automática", "No disponible sin servidores configurados y comprobados.")
+                            Info("Servidor principal", "No aprovisionado. Importa un perfil autorizado.")
+                            Info("Servidor de respaldo", "No aprovisionado.")
+                            Info("Servidores personalizados", if (hasProfile) "1 perfil importado en memoria" else "Ningún perfil importado")
+                            Button(onClick = { picker.launch(arrayOf("*/*")) }) { Text("Importar configuración WireGuard") }
+                            Info("Favoritos y selección automática", "Pendientes de catálogo real y comprobaciones de disponibilidad.")
                         }
                         2 -> {
                             Info("Tipo de red", network)
-                            Button(onClick = { refresh++ }) { Text("Actualizar diagnóstico") }
-                            Info("Conectividad", "La detección de transporte no garantiza acceso real a Internet.")
-                            Info("DNS / latencia", "Pendiente de pruebas reales. No se muestran resultados inventados.")
+                            Button(onClick = { refresh++ }) { Text("Actualizar") }
+                            Info("Prueba de Internet", "La detección de transporte no garantiza conectividad.")
+                            Info("DNS y latencia", "Pendiente de mediciones reales.")
                         }
                         3 -> {
-                            Info("Tiempo conectado", "00:00:00")
-                            Info("Tráfico VPN", "No disponible — no existe túnel activo")
-                            Info("Velocidad VPN", "No medida")
+                            Info("Estado del túnel", tunnelStatus.name)
+                            Info("Tráfico", "Contadores y velocidades pendientes de integración.")
                         }
                         4 -> {
-                            Info("Estado de seguridad", "VPN inactiva")
-                            Info("Kill switch", "Utiliza las opciones VPN siempre activa y bloquear conexiones sin VPN de Android cuando exista un túnel funcional.")
-                            Info("DNS", "Sin DNS del túnel configurado")
-                            Info("WireGuard", "Backend pendiente de integrar y verificar")
+                            Info("WireGuard", if (hasProfile) "Perfil válido importado en memoria" else "Sin perfil")
+                            Info("VPN siempre activa", "Configúrala en Ajustes de Android > VPN después de conectar correctamente.")
+                            Info("Bloquear sin VPN", "Activa esta protección en Android si necesitas evitar tráfico fuera del túnel.")
+                            Info("Privacidad", "Las claves del perfil no se guardan en disco por TMC VPN.")
                         }
                         5 -> {
-                            Info("Aplicación", "TMC VPN Ultimate V3.0")
+                            Info("Versión", "3.1.0")
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Text("Preferir notificaciones", modifier = Modifier.weight(1f))
-                                Switch(checked = notifications, onCheckedChange = { notifications = it })
+                                Text("Preferencia de notificaciones", modifier = Modifier.weight(1f))
+                                Switch(checked = notificationPreference, onCheckedChange = { notificationPreference = it })
                             }
-                            Info("Nota", "La preferencia de notificaciones aún no modifica permisos del sistema.")
-                            Button(onClick = { showWelcome = true }) { Text("Ver bienvenida") }
+                            Info("Aviso", "Esta preferencia todavía no cambia los permisos de Android.")
+                            Button(onClick = { welcome = true }) { Text("Pantalla de bienvenida") }
                         }
                         else -> {
-                            Info("Cuenta", "No se requiere registro para esta versión.")
-                            Info("Plan gratuito", "Interfaz disponible. Servidores todavía no aprovisionados.")
-                            Info("Plan Pro", "Concepto futuro; no hay suscripciones ni pagos habilitados.")
-                            Info("Privacidad", "No se solicitan credenciales ni se recopilan perfiles privados.")
+                            Info("Cuenta", "Sin registro obligatorio.")
+                            Info("Gratis", "Importación de un perfil WireGuard personal.")
+                            Info("Pro", "Concepto futuro, sin suscripciones ni pagos.")
                         }
                     }
                 }
-                Spacer(Modifier.height(8.dp))
                 HorizontalDivider(color = Color(0xFF29425F))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    listOf(0, 1, 2, 3).forEach { index ->
-                        Text(pages[index], modifier = Modifier.clickable { page = index }.padding(vertical = 12.dp, horizontal = 4.dp), fontSize = 11.sp, color = if (page == index) Cyan else Color.LightGray)
+                    listOf(0, 1, 2, 3).forEach { i ->
+                        Text(pages[i], modifier = Modifier.clickable { page = i }.padding(8.dp), fontSize = 11.sp, color = if (page == i) Cyan else Color.LightGray)
                     }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    listOf(4, 5, 6).forEach { index ->
-                        Text(pages[index], modifier = Modifier.clickable { page = index }.padding(vertical = 8.dp, horizontal = 12.dp), fontSize = 11.sp, color = if (page == index) Cyan else Color.LightGray)
+                    listOf(4, 5, 6).forEach { i ->
+                        Text(pages[i], modifier = Modifier.clickable { page = i }.padding(8.dp), fontSize = 11.sp, color = if (page == i) Cyan else Color.LightGray)
                     }
                 }
             }
@@ -173,7 +197,6 @@ private fun networkType(context: Context): String {
         caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN) -> "VPN externa activa"
         caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi"
         caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "Datos móviles"
-        caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "Ethernet"
         else -> "Otra conexión"
     }
 }
