@@ -117,7 +117,7 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
             if (welcome) {
                 Spacer(Modifier.weight(1f))
                 Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Image(painterResource(R.drawable.tmc_shield), contentDescription = "TMC VPN", modifier = Modifier.size(166.dp))
+                    Image(painterResource(R.drawable.tmc_vpn_v32_icon), contentDescription = "TMC VPN", modifier = Modifier.size(166.dp))
                     Text("TMC VPN ULTIMATE", fontWeight = FontWeight.Black, fontSize = 26.sp)
                     Text("WireGuard • Conexión privada", color = Cyan)
                 }
@@ -127,9 +127,9 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                 Button(onClick = { welcome = false }, modifier = Modifier.fillMaxWidth()) { Text("Comenzar") }
             } else {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Image(painterResource(R.drawable.tmc_shield), contentDescription = "Logo", modifier = Modifier.size(62.dp))
+                    Image(painterResource(R.drawable.tmc_vpn_v32_icon), contentDescription = "Logo", modifier = Modifier.size(62.dp))
                     Column {
-                        Text("TMC VPN", fontSize = 25.sp, fontWeight = FontWeight.Black)
+                        Text("TMC VPN", fontSize = 25.sp, fontWeight = FontWeight.Black, color = Color.White)
                         Text("ULTIMATE 3.1 • WireGuard", fontSize = 11.sp, color = Color.LightGray)
                     }
                 }
@@ -140,7 +140,7 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                     when (page) {
                         0 -> {
                             Spacer(Modifier.height(14.dp))
-                            Image(painterResource(R.drawable.tmc_shield), contentDescription = null, modifier = Modifier.size(140.dp))
+                            Image(painterResource(R.drawable.tmc_vpn_v32_icon), contentDescription = null, modifier = Modifier.size(140.dp))
                             val active = tunnelStatus == TunnelStatus.CONNECTED
                             Text(if (active) "TÚNEL ACTIVO" else "DESCONECTADO", color = if (active) Green else Red, fontSize = 24.sp, fontWeight = FontWeight.Bold)
                             Text(message, textAlign = TextAlign.Center, color = Color.LightGray)
