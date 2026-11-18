@@ -66,7 +66,8 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
     var busy by remember { mutableStateOf(false) }
     var notificationPreference by remember { mutableStateOf(true) }
     val scope = rememberCoroutineScope()
-    val network = remember(refresh) { networkType(context) }
+    val network = remember(refresh, tunnelStatus) { networkType(context, tunnelStatus) }
+    val diagnostics = remember(refresh, tunnelStatus) { networkDiagnostics(context) }
     var pendingConnect by remember { mutableStateOf(false) }
     val vpnPermission = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == android.app.Activity.RESULT_OK) pendingConnect = true
@@ -130,7 +131,7 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                     Image(painterResource(R.drawable.tmc_vpn_logo_3d), contentDescription = "Logo", modifier = Modifier.size(62.dp))
                     Column {
                         Text("TMC VPN", fontSize = 25.sp, fontWeight = FontWeight.Black, color = Color.White)
-                        Text("ULTIMATE 3.1 • WireGuard", fontSize = 11.sp, color = Color.LightGray)
+                        Text("ULTIMATE 3.3 • WireGuard", fontSize = 11.sp, color = Color.LightGray)
                     }
                 }
                 Spacer(Modifier.height(12.dp))
@@ -182,13 +183,15 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                         }
                         2 -> {
                             Info("Tipo de red", network)
-                            Button(onClick = { refresh++ }) { Text("Actualizar") }
-                            Info("Prueba de Internet", "La detección de transporte no garantiza conectividad.")
-                            Info("DNS y latencia", "Pendiente de mediciones reales.")
+                            Info("Validación de Internet", diagnostics.internet)
+                            Info("DNS configurados", diagnostics.dns)
+                            Info("Ruta de conexión", diagnostics.route)
+                            Button(onClick = { refresh++ }) { Text("Actualizar diagnóstico") }
+                            Info("Nota", "La validación del sistema no garantiza ausencia de fugas DNS. La latencia real requiere una prueba activa.")
                         }
                         3 -> {
                             Info("Estado del túnel", tunnelStatus.name)
-                            Info("Tráfico", "Contadores y velocidades pendientes de integración.")
+                            Info("Tráfico", "El backend actual no expone contadores verificables. No se muestran cifras estimadas.")
                         }
                         4 -> {
                             Info("WireGuard", if (hasProfile) "Perfil válido importado en memoria" else "Sin perfil")
@@ -197,7 +200,7 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                             Info("Privacidad", "Perfiles cifrados con clave no exportable de Android Keystore.")
                         }
                         5 -> {
-                            Info("Versión", "3.1.0")
+                            Info("Versión", "3.3.0 (diagnóstico inicial)")
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Text("Preferencia de notificaciones", modifier = Modifier.weight(1f))
                                 Switch(checked = notificationPreference, onCheckedChange = { notificationPreference = it })
@@ -236,13 +239,38 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
     }
 }
 
-private fun networkType(context: Context): String {
+private fun networkType(context: Context, tunnelStatus: TunnelStatus): String {
     val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
     val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return "Sin red activa detectada"
     return when {
-        caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN) -> "VPN externa activa"
+        caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN) -> if (tunnelStatus == TunnelStatus.CONNECTED) "TMC VPN (WireGuard)" else "VPN activa (origen sin verificar)"
         caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi"
         caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "Datos móviles"
         else -> "Otra conexión"
     }
 }
+
+private data class NetworkDiagnostics(val internet: String, val dns: String, val route: String)
+
+private fun networkDiagnostics(context: Context): NetworkDiagnostics = runCatching {
+    val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    val network = cm.activeNetwork ?: return NetworkDiagnostics("Sin red activa", "No disponibles", "Sin ruta activa")
+    val caps = cm.getNetworkCapabilities(network)
+    val props = cm.getLinkProperties(network)
+    val internet = when {
+        caps == null -> "Capacidades no disponibles"
+        caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) -> "Android confirma conectividad validada"
+        caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) -> "Red con capacidad de Internet, aún no validada"
+        else -> "Internet no confirmado por Android"
+    }
+    val dns = props?.dnsServers?.takeIf { it.isNotEmpty() }?.joinToString(", ") { it.hostAddress ?: "Desconocido" }
+        ?: "No informados por Android"
+    val route = when {
+        caps == null -> "Desconocida"
+        caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN) -> "Red VPN detectada"
+        caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi sin transporte VPN detectado"
+        caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "Datos móviles sin transporte VPN detectado"
+        else -> "Otro transporte"
+    }
+    NetworkDiagnostics(internet, dns, route)
+}.getOrElse { NetworkDiagnostics("Diagnóstico no disponible", "No disponibles", "No disponible") }
