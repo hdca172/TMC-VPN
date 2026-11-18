@@ -69,6 +69,7 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
             runCatching {
                 val text = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
                     ?: error("No se pudo leer el archivo")
+                check(tunnelStatus != TunnelStatus.CONNECTED) { "Desconecta el túnel antes de cambiar de perfil" }
                 controller.importProfile(text).getOrThrow()
             }.onSuccess {
                 hasProfile = true
@@ -147,12 +148,16 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                                     Text("Latencia: sin medir", color = Color.LightGray, fontSize = 12.sp)
                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                         TextButton(onClick = {
+                                            if (tunnelStatus == TunnelStatus.CONNECTED) {
+                                                message = "Desconecta el túnel antes de seleccionar otro servidor"
+                                            } else {
                                             selectedServerId = server.id
                                             message = "Importa el archivo .conf de este servidor antes de conectar"
                                             hasProfile = false
+                                            }
                                         }) { Text("Seleccionar") }
                                         TextButton(onClick = { catalog.toggleFavorite(server.id); catalogVersion++ }) { Text(if (server.favorite) "★" else "☆") }
-                                        TextButton(onClick = { catalog.remove(server.id); catalogVersion++; if (selectedServerId == server.id) { selectedServerId = null; hasProfile = false } }) { Text("Eliminar") }
+                                        TextButton(onClick = { if (tunnelStatus != TunnelStatus.CONNECTED) { catalog.remove(server.id); catalogVersion++; if (selectedServerId == server.id) { selectedServerId = null; hasProfile = false } } else message = "Desconecta antes de eliminar un servidor" }) { Text("Eliminar") }
                                     }
                                 }
                             }
