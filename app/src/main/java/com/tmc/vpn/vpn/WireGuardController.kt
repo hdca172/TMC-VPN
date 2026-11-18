@@ -11,6 +11,8 @@ import java.nio.charset.StandardCharsets
  * Real WireGuard userspace backend. Profiles are kept only in RAM in this build.
  * Never log, publish or bundle a WireGuard private key.
  */
+data class TrafficSnapshot(val receivedBytes: Long, val sentBytes: Long)
+
 class WireGuardController(context: Context) {
     private val backend = GoBackend(context.applicationContext)
     private var config: Config? = null
@@ -42,6 +44,12 @@ class WireGuardController(context: Context) {
             status = TunnelStatus.ERROR
             throw e
         }
+    }
+
+    fun trafficSnapshot(): Result<TrafficSnapshot> = runCatching {
+        check(status == TunnelStatus.CONNECTED) { "El túnel no está conectado" }
+        val stats = backend.getStatistics(tunnel)
+        TrafficSnapshot(stats.totalRx(), stats.totalTx())
     }
 
     fun disconnect(): Result<Unit> = runCatching {
