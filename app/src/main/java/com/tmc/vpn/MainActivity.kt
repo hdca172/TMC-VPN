@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.net.VpnService
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -26,6 +27,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.tmc.vpn.servers.ServerCatalog
+import com.tmc.vpn.servers.ServerKind
+import com.tmc.vpn.servers.SecureProfileStore
 import com.tmc.vpn.vpn.TunnelStatus
 import com.tmc.vpn.vpn.WireGuardController
 import kotlinx.coroutines.Dispatchers
@@ -53,27 +57,45 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
     var welcome by remember { mutableStateOf(true) }
     var refresh by remember { mutableIntStateOf(0) }
     var hasProfile by remember { mutableStateOf(false) }
+    val profileStore = remember { SecureProfileStore(context) }
+    val catalog = remember { ServerCatalog(context) }
+    var catalogVersion by remember { mutableIntStateOf(0) }
+    var selectedServerId by remember { mutableStateOf<String?>(null) }
     var tunnelStatus by remember { mutableStateOf(TunnelStatus.DISCONNECTED) }
     var message by remember { mutableStateOf("Sin perfil WireGuard") }
     var busy by remember { mutableStateOf(false) }
     var notificationPreference by remember { mutableStateOf(true) }
     val scope = rememberCoroutineScope()
     val network = remember(refresh) { networkType(context) }
+    var pendingConnect by remember { mutableStateOf(false) }
+    val vpnPermission = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) pendingConnect = true
+        else message = "Permiso VPN rechazado"
+    }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             runCatching {
                 val text = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
                     ?: error("No se pudo leer el archivo")
-                controller.importProfile(text).getOrThrow()
+                check(tunnelStatus != TunnelStatus.CONNECTED) { "Desconecta el túnel antes de cambiar de perfil" }
+                val imported = catalog.add("Perfil importado " + (catalog.list().size + 1))
+                try { profileStore.save(imported.id, text); controller.importProfile(profileStore.load(imported.id)).getOrThrow() }
+                catch (e: Exception) { profileStore.delete(imported.id); catalog.remove(imported.id); throw e }
+                selectedServerId = imported.id
             }.onSuccess {
                 hasProfile = true
+                catalogVersion++
                 tunnelStatus = TunnelStatus.DISCONNECTED
-                message = "Perfil importado en memoria. Conecta solo a servidores de confianza."
+                message = "Perfil cifrado asociado al servidor seleccionado."
             }.onFailure { message = "Error al importar: ${it.localizedMessage ?: "perfil inválido"}" }
         }
     }
     fun toggleConnection() {
         if (busy || !hasProfile) return
+        if (tunnelStatus != TunnelStatus.CONNECTED) {
+            val permission = VpnService.prepare(context)
+            if (permission != null) { vpnPermission.launch(permission); return }
+        }
         busy = true
         scope.launch {
             val result = withContext(Dispatchers.IO) {
@@ -87,12 +109,15 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
             busy = false
         }
     }
+    LaunchedEffect(pendingConnect) {
+        if (pendingConnect) { pendingConnect = false; toggleConnection() }
+    }
     MaterialTheme(colorScheme = darkColorScheme(primary = Cyan, background = Navy, surface = Panel)) {
         Column(Modifier.fillMaxSize().background(Navy).padding(16.dp)) {
             if (welcome) {
                 Spacer(Modifier.weight(1f))
                 Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Image(painterResource(R.drawable.tmc_shield), contentDescription = "TMC VPN", modifier = Modifier.size(166.dp))
+                    Image(painterResource(R.drawable.tmc_vpn_logo_3d), contentDescription = "TMC VPN", modifier = Modifier.size(166.dp))
                     Text("TMC VPN ULTIMATE", fontWeight = FontWeight.Black, fontSize = 26.sp)
                     Text("WireGuard • Conexión privada", color = Cyan)
                 }
@@ -102,9 +127,9 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                 Button(onClick = { welcome = false }, modifier = Modifier.fillMaxWidth()) { Text("Comenzar") }
             } else {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Image(painterResource(R.drawable.tmc_shield), contentDescription = "Logo", modifier = Modifier.size(62.dp))
+                    Image(painterResource(R.drawable.tmc_vpn_logo_3d), contentDescription = "Logo", modifier = Modifier.size(62.dp))
                     Column {
-                        Text("TMC VPN", fontSize = 25.sp, fontWeight = FontWeight.Black)
+                        Text("TMC VPN", fontSize = 25.sp, fontWeight = FontWeight.Black, color = Color.White)
                         Text("ULTIMATE 3.1 • WireGuard", fontSize = 11.sp, color = Color.LightGray)
                     }
                 }
@@ -115,7 +140,7 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                     when (page) {
                         0 -> {
                             Spacer(Modifier.height(14.dp))
-                            Image(painterResource(R.drawable.tmc_shield), contentDescription = null, modifier = Modifier.size(140.dp))
+                            Image(painterResource(R.drawable.tmc_vpn_logo_3d), contentDescription = null, modifier = Modifier.size(140.dp))
                             val active = tunnelStatus == TunnelStatus.CONNECTED
                             Text(if (active) "TÚNEL ACTIVO" else "DESCONECTADO", color = if (active) Green else Red, fontSize = 24.sp, fontWeight = FontWeight.Bold)
                             Text(message, textAlign = TextAlign.Center, color = Color.LightGray)
@@ -128,11 +153,32 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                             Info("Estado", if (active) "WireGuard reporta túnel UP. Comprueba conectividad y DNS." else "No hay túnel activo.")
                         }
                         1 -> {
-                            Info("Servidor principal", "No aprovisionado. Importa un perfil autorizado.")
-                            Info("Servidor de respaldo", "No aprovisionado.")
-                            Info("Servidores personalizados", if (hasProfile) "1 perfil importado en memoria" else "Ningún perfil importado")
+                            Text("🇩🇴 INTERNET REPÚBLICA DOMINICANA", color = Cyan, fontWeight = FontWeight.Bold)
+                            Info("Servidores gratuitos", "Sin servidores públicos verificados. Agrega solamente perfiles WireGuard autorizados.")
+                            val servers = remember(catalogVersion) { catalog.list() }
+                            if (servers.isEmpty()) Info("Catálogo vacío", "Importa tu primer perfil .conf para comenzar.")
+                            servers.forEach { server ->
+                                Column(Modifier.fillMaxWidth().padding(vertical = 4.dp).background(Panel, RoundedCornerShape(14.dp)).padding(12.dp)) {
+                                    Text(server.name + if (selectedServerId == server.id) " • Seleccionado" else "", color = Color.White, fontWeight = FontWeight.Bold)
+                                    Text(if (server.kind == ServerKind.FREE) "Gratuito verificado" else "Personalizado", color = Color.LightGray)
+                                    Text("Latencia: sin medir", color = Color.LightGray, fontSize = 12.sp)
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        TextButton(onClick = {
+                                            if (tunnelStatus == TunnelStatus.CONNECTED) {
+                                                message = "Desconecta el túnel antes de seleccionar otro servidor"
+                                            } else {
+                                            runCatching { controller.importProfile(profileStore.load(server.id)).getOrThrow() }
+                                                .onSuccess { selectedServerId = server.id; hasProfile = true; message = "Perfil seleccionado: " + server.name }
+                                                .onFailure { selectedServerId = null; hasProfile = false; message = "No se pudo cargar el perfil" }
+                                            }
+                                        }) { Text("Seleccionar") }
+                                        TextButton(onClick = { catalog.toggleFavorite(server.id); catalogVersion++ }) { Text(if (server.favorite) "★" else "☆") }
+                                        TextButton(onClick = { if (tunnelStatus != TunnelStatus.CONNECTED) { profileStore.delete(server.id); catalog.remove(server.id); catalogVersion++; if (selectedServerId == server.id) { selectedServerId = null; hasProfile = false } } else message = "Desconecta antes de eliminar un servidor" }) { Text("Eliminar") }
+                                    }
+                                }
+                            }
                             Button(onClick = { picker.launch(arrayOf("*/*")) }) { Text("Importar configuración WireGuard") }
-                            Info("Favoritos y selección automática", "Pendientes de catálogo real y comprobaciones de disponibilidad.")
+                            Info("Seguridad", "Perfiles cifrados con Android Keystore; favoritos guardan metadatos.")
                         }
                         2 -> {
                             Info("Tipo de red", network)
@@ -148,7 +194,7 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                             Info("WireGuard", if (hasProfile) "Perfil válido importado en memoria" else "Sin perfil")
                             Info("VPN siempre activa", "Configúrala en Ajustes de Android > VPN después de conectar correctamente.")
                             Info("Bloquear sin VPN", "Activa esta protección en Android si necesitas evitar tráfico fuera del túnel.")
-                            Info("Privacidad", "Las claves del perfil no se guardan en disco por TMC VPN.")
+                            Info("Privacidad", "Perfiles cifrados con clave no exportable de Android Keystore.")
                         }
                         5 -> {
                             Info("Versión", "3.1.0")
