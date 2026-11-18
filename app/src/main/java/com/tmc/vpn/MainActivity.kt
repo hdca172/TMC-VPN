@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.sp
 import com.tmc.vpn.servers.ServerCatalog
 import com.tmc.vpn.servers.ServerKind
 import com.tmc.vpn.servers.SecureProfileStore
+import com.tmc.vpn.vpn.TrafficSnapshot
 import com.tmc.vpn.vpn.TunnelStatus
 import com.tmc.vpn.vpn.WireGuardController
 import kotlinx.coroutines.Dispatchers
@@ -70,6 +71,8 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
     var autoRecovery by remember { mutableStateOf(false) }
     var recoveryEvents by remember { mutableIntStateOf(0) }
     var lastRecoveryMessage by remember { mutableStateOf("Sin recuperaciones solicitadas") }
+    var traffic by remember { mutableStateOf<TrafficSnapshot?>(null) }
+    var trafficError by remember { mutableStateOf("Conecta el túnel para consultar los contadores.") }
     val scope = rememberCoroutineScope()
     val network = remember(refresh, tunnelStatus) { networkType(context, tunnelStatus) }
     val diagnostics = remember(refresh, tunnelStatus) { networkDiagnostics(context) }
@@ -147,6 +150,16 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
         )
         busy = false
     }
+    LaunchedEffect(page, tunnelStatus) {
+        traffic = null
+        if (page != 3 || tunnelStatus != TunnelStatus.CONNECTED) return@LaunchedEffect
+        while (true) {
+            val result = withContext(Dispatchers.IO) { controller.trafficSnapshot() }
+            result.onSuccess { traffic = it; trafficError = "" }
+                .onFailure { traffic = null; trafficError = it.localizedMessage ?: "Estadísticas no disponibles" }
+            delay(3000)
+        }
+    }
     LaunchedEffect(pendingConnect) {
         if (pendingConnect) { pendingConnect = false; toggleConnection() }
     }
@@ -168,7 +181,7 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                     Image(painterResource(R.drawable.tmc_vpn_logo_3d), contentDescription = "Logo", modifier = Modifier.size(62.dp))
                     Column {
                         Text("TMC VPN", fontSize = 25.sp, fontWeight = FontWeight.Black, color = Color.White)
-                        Text("ULTIMATE 3.4 • WireGuard", fontSize = 11.sp, color = Color.LightGray)
+                        Text("ULTIMATE 3.5 • WireGuard", fontSize = 11.sp, color = Color.LightGray)
                     }
                 }
                 Spacer(Modifier.height(12.dp))
@@ -229,7 +242,10 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                         }
                         3 -> {
                             Info("Estado del túnel", tunnelStatus.name)
-                            Info("Tráfico", "El backend actual no expone contadores verificables. No se muestran cifras estimadas.")
+                            Info("Recibido (WireGuard)", traffic?.let { formatTraffic(it.receivedBytes) } ?: "No disponible")
+                            Info("Enviado (WireGuard)", traffic?.let { formatTraffic(it.sentBytes) } ?: "No disponible")
+                            if (traffic == null) Info("Estado de lectura", trafficError)
+                            Info("Medición", "Contadores del túnel actual, actualizados cada 3 segundos mientras ves esta pantalla. No son el consumo total de datos móviles.")
                         }
                         4 -> {
                             Info("WireGuard", if (hasProfile) "Perfil válido importado en memoria" else "Sin perfil")
@@ -238,7 +254,7 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                             Info("Privacidad", "Perfiles cifrados con clave no exportable de Android Keystore.")
                         }
                         5 -> {
-                            Info("Versión", "3.4.0 (recuperación experimental)")
+                            Info("Versión", "3.5.0 (estadísticas experimentales)")
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Text("Recuperar túnel al cambiar de red", modifier = Modifier.weight(1f))
                                 Switch(checked = autoRecovery, onCheckedChange = { autoRecovery = it })
@@ -317,3 +333,10 @@ private fun networkDiagnostics(context: Context): NetworkDiagnostics = runCatchi
     }
     NetworkDiagnostics(internet, dns, route)
 }.getOrElse { NetworkDiagnostics("Diagnóstico no disponible", "No disponibles", "No disponible") }
+
+private fun formatTraffic(bytes: Long): String = when {
+    bytes >= 1_073_741_824L -> "%.2f GiB".format(java.util.Locale.US, bytes / 1_073_741_824.0)
+    bytes >= 1_048_576L -> "%.2f MiB".format(java.util.Locale.US, bytes / 1_048_576.0)
+    bytes >= 1024L -> "%.2f KiB".format(java.util.Locale.US, bytes / 1024.0)
+    else -> "$bytes B"
+}
