@@ -26,6 +26,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.tmc.vpn.servers.ServerCatalog
+import com.tmc.vpn.servers.ServerKind
 import com.tmc.vpn.vpn.TunnelStatus
 import com.tmc.vpn.vpn.WireGuardController
 import kotlinx.coroutines.Dispatchers
@@ -53,6 +55,9 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
     var welcome by remember { mutableStateOf(true) }
     var refresh by remember { mutableIntStateOf(0) }
     var hasProfile by remember { mutableStateOf(false) }
+    val catalog = remember { ServerCatalog(context) }
+    var catalogVersion by remember { mutableIntStateOf(0) }
+    var selectedServerId by remember { mutableStateOf<String?>(null) }
     var tunnelStatus by remember { mutableStateOf(TunnelStatus.DISCONNECTED) }
     var message by remember { mutableStateOf("Sin perfil WireGuard") }
     var busy by remember { mutableStateOf(false) }
@@ -67,6 +72,9 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                 controller.importProfile(text).getOrThrow()
             }.onSuccess {
                 hasProfile = true
+                val imported = catalog.add("Perfil importado " + (catalog.list().size + 1))
+                selectedServerId = imported.id
+                catalogVersion++
                 tunnelStatus = TunnelStatus.DISCONNECTED
                 message = "Perfil importado en memoria. Conecta solo a servidores de confianza."
             }.onFailure { message = "Error al importar: ${it.localizedMessage ?: "perfil inválido"}" }
@@ -128,11 +136,28 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                             Info("Estado", if (active) "WireGuard reporta túnel UP. Comprueba conectividad y DNS." else "No hay túnel activo.")
                         }
                         1 -> {
-                            Info("Servidor principal", "No aprovisionado. Importa un perfil autorizado.")
-                            Info("Servidor de respaldo", "No aprovisionado.")
-                            Info("Servidores personalizados", if (hasProfile) "1 perfil importado en memoria" else "Ningún perfil importado")
+                            Text("🇩🇴 INTERNET REPÚBLICA DOMINICANA", color = Cyan, fontWeight = FontWeight.Bold)
+                            Info("Servidores gratuitos", "Sin servidores públicos verificados. Agrega solamente perfiles WireGuard autorizados.")
+                            val servers = remember(catalogVersion) { catalog.list() }
+                            if (servers.isEmpty()) Info("Catálogo vacío", "Importa tu primer perfil .conf para comenzar.")
+                            servers.forEach { server ->
+                                Column(Modifier.fillMaxWidth().padding(vertical = 4.dp).background(Panel, RoundedCornerShape(14.dp)).padding(12.dp)) {
+                                    Text(server.name + if (selectedServerId == server.id) " • Seleccionado" else "", color = Color.White, fontWeight = FontWeight.Bold)
+                                    Text(if (server.kind == ServerKind.FREE) "Gratuito verificado" else "Personalizado", color = Color.LightGray)
+                                    Text("Latencia: sin medir", color = Color.LightGray, fontSize = 12.sp)
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        TextButton(onClick = {
+                                            selectedServerId = server.id
+                                            message = "Importa el archivo .conf de este servidor antes de conectar"
+                                            hasProfile = false
+                                        }) { Text("Seleccionar") }
+                                        TextButton(onClick = { catalog.toggleFavorite(server.id); catalogVersion++ }) { Text(if (server.favorite) "★" else "☆") }
+                                        TextButton(onClick = { catalog.remove(server.id); catalogVersion++; if (selectedServerId == server.id) { selectedServerId = null; hasProfile = false } }) { Text("Eliminar") }
+                                    }
+                                }
+                            }
                             Button(onClick = { picker.launch(arrayOf("*/*")) }) { Text("Importar configuración WireGuard") }
-                            Info("Favoritos y selección automática", "Pendientes de catálogo real y comprobaciones de disponibilidad.")
+                            Info("Seguridad", "Los perfiles y sus claves permanecen solo en memoria. Los favoritos guardan únicamente nombres y metadatos.")
                         }
                         2 -> {
                             Info("Tipo de red", network)
