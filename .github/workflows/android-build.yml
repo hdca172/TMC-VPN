@@ -2,7 +2,7 @@ name: TMC VPN - V3 APK CI
 on:
   workflow_dispatch:
   push:
-    branches: [main, feature/v3-ultimate]
+    branches: [main, feature/v3-ultimate, feature/v3.1-server-catalog]
   pull_request:
 jobs:
   build:
