@@ -2,6 +2,7 @@ package com.tmc.vpn
 
 import android.content.Context
 import android.content.Intent
+import android.net.Network
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.VpnService
@@ -34,6 +35,7 @@ import com.tmc.vpn.vpn.TunnelStatus
 import com.tmc.vpn.vpn.WireGuardController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 private val Navy = Color(0xFF081426)
@@ -65,6 +67,9 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
     var message by remember { mutableStateOf("Sin perfil WireGuard") }
     var busy by remember { mutableStateOf(false) }
     var notificationPreference by remember { mutableStateOf(true) }
+    var autoRecovery by remember { mutableStateOf(false) }
+    var recoveryEvents by remember { mutableIntStateOf(0) }
+    var lastRecoveryMessage by remember { mutableStateOf("Sin recuperaciones solicitadas") }
     val scope = rememberCoroutineScope()
     val network = remember(refresh, tunnelStatus) { networkType(context, tunnelStatus) }
     val diagnostics = remember(refresh, tunnelStatus) { networkDiagnostics(context) }
@@ -110,6 +115,38 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
             busy = false
         }
     }
+    // Monitor only while this activity is visible. Do not reconnect after a manual disconnect.
+    DisposableEffect(context, autoRecovery) {
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        var initialEvent = true
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                if (initialEvent) { initialEvent = false; return }
+                if (autoRecovery) recoveryEvents++
+            }
+        }
+        if (autoRecovery) runCatching { cm.registerDefaultNetworkCallback(callback) }
+        onDispose { if (autoRecovery) runCatching { cm.unregisterNetworkCallback(callback) } }
+    }
+    LaunchedEffect(recoveryEvents) {
+        if (recoveryEvents == 0 || !autoRecovery || tunnelStatus != TunnelStatus.CONNECTED || busy) return@LaunchedEffect
+        delay(2500)
+        if (!autoRecovery || tunnelStatus != TunnelStatus.CONNECTED || busy) return@LaunchedEffect
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val caps = cm.getNetworkCapabilities(cm.activeNetwork)
+        if (caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) != true) {
+            lastRecoveryMessage = "Cambio de red detectado; esperando conectividad validada"
+            return@LaunchedEffect
+        }
+        busy = true
+        val result = withContext(Dispatchers.IO) { controller.connect() }
+        tunnelStatus = controller.status
+        lastRecoveryMessage = result.fold(
+            onSuccess = { "Reactivación solicitada al cambiar de red" },
+            onFailure = { "No se pudo reactivar: ${it.localizedMessage ?: "error"}" }
+        )
+        busy = false
+    }
     LaunchedEffect(pendingConnect) {
         if (pendingConnect) { pendingConnect = false; toggleConnection() }
     }
@@ -131,7 +168,7 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                     Image(painterResource(R.drawable.tmc_vpn_logo_3d), contentDescription = "Logo", modifier = Modifier.size(62.dp))
                     Column {
                         Text("TMC VPN", fontSize = 25.sp, fontWeight = FontWeight.Black, color = Color.White)
-                        Text("ULTIMATE 3.3 • WireGuard", fontSize = 11.sp, color = Color.LightGray)
+                        Text("ULTIMATE 3.4 • WireGuard", fontSize = 11.sp, color = Color.LightGray)
                     }
                 }
                 Spacer(Modifier.height(12.dp))
@@ -152,6 +189,7 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                             Button(onClick = { picker.launch(arrayOf("*/*")) }) { Text("Importar perfil .conf") }
                             Info("Red", network)
                             Info("Estado", if (active) "WireGuard reporta túnel UP. Comprueba conectividad y DNS." else "No hay túnel activo.")
+                            Info("Recuperación de red", lastRecoveryMessage)
                         }
                         1 -> {
                             Text("🇩🇴 INTERNET REPÚBLICA DOMINICANA", color = Cyan, fontWeight = FontWeight.Bold)
@@ -200,7 +238,12 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                             Info("Privacidad", "Perfiles cifrados con clave no exportable de Android Keystore.")
                         }
                         5 -> {
-                            Info("Versión", "3.3.0 (diagnóstico inicial)")
+                            Info("Versión", "3.4.0 (recuperación experimental)")
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text("Recuperar túnel al cambiar de red", modifier = Modifier.weight(1f))
+                                Switch(checked = autoRecovery, onCheckedChange = { autoRecovery = it })
+                            }
+                            Info("Alcance", "Experimental y opcional: solo vigila cambios mientras esta pantalla está abierta. WireGuard gestiona normalmente la movilidad entre redes. No es un servicio persistente ni un kill switch.")
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Text("Preferencia de notificaciones", modifier = Modifier.weight(1f))
                                 Switch(checked = notificationPreference, onCheckedChange = { notificationPreference = it })
