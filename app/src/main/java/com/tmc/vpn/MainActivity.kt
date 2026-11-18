@@ -181,7 +181,7 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                     Image(painterResource(R.drawable.tmc_vpn_logo_3d), contentDescription = "Logo", modifier = Modifier.size(62.dp))
                     Column {
                         Text("TMC VPN", fontSize = 25.sp, fontWeight = FontWeight.Black, color = Color.White)
-                        Text("ULTIMATE 3.5 • WireGuard", fontSize = 11.sp, color = Color.LightGray)
+                        Text("ULTIMATE 3.6 • WireGuard", fontSize = 11.sp, color = Color.LightGray)
                     }
                 }
                 Spacer(Modifier.height(12.dp))
@@ -207,7 +207,21 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                         1 -> {
                             Text("🇩🇴 INTERNET REPÚBLICA DOMINICANA", color = Cyan, fontWeight = FontWeight.Bold)
                             Info("Servidores gratuitos", "Sin servidores públicos verificados. Agrega solamente perfiles WireGuard autorizados.")
-                            val servers = remember(catalogVersion) { catalog.list() }
+                            val servers = remember(catalogVersion) { catalog.list().sortedWith(compareByDescending<com.tmc.vpn.servers.VpnServer> { it.favorite }.thenBy { it.name }) }
+                            val suggested = servers.firstOrNull { it.favorite } ?: servers.firstOrNull()
+                            if (suggested != null) {
+                                Info("Sugerencia local", suggested.name + if (suggested.favorite) " • Favorito" else " • Primer perfil disponible")
+                                Info("Criterio", "Ordena perfiles guardados priorizando favoritos. No mide latencia, disponibilidad ni velocidad. Selecciona manualmente antes de conectar.")
+                                Button(onClick = {
+                                    if (tunnelStatus == TunnelStatus.CONNECTED || busy) {
+                                        message = "Desconecta el túnel antes de seleccionar otro servidor"
+                                    } else {
+                                        runCatching { controller.importProfile(profileStore.load(suggested.id)).getOrThrow() }
+                                            .onSuccess { selectedServerId = suggested.id; hasProfile = true; message = "Perfil sugerido seleccionado: " + suggested.name }
+                                            .onFailure { message = "No se pudo cargar el perfil sugerido: ${it.localizedMessage ?: "error"}" }
+                                    }
+                                }, enabled = tunnelStatus != TunnelStatus.CONNECTED && !busy) { Text("Seleccionar sugerido") }
+                            }
                             if (servers.isEmpty()) Info("Catálogo vacío", "Importa tu primer perfil .conf para comenzar.")
                             servers.forEach { server ->
                                 Column(Modifier.fillMaxWidth().padding(vertical = 4.dp).background(Panel, RoundedCornerShape(14.dp)).padding(12.dp)) {
@@ -254,7 +268,7 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                             Info("Privacidad", "Perfiles cifrados con clave no exportable de Android Keystore.")
                         }
                         5 -> {
-                            Info("Versión", "3.5.0 (estadísticas experimentales)")
+                            Info("Versión", "3.6.0 (selección asistida experimental)")
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Text("Recuperar túnel al cambiar de red", modifier = Modifier.weight(1f))
                                 Switch(checked = autoRecovery, onCheckedChange = { autoRecovery = it })
