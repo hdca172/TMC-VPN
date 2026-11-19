@@ -71,6 +71,7 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
     val recoveryPreferences = remember { context.getSharedPreferences("tmc_vpn_recovery", Context.MODE_PRIVATE) }
     var autoRecovery by remember { mutableStateOf(recoveryPreferences.getBoolean("enabled", false)) }
     var recoveryEvents by remember { mutableIntStateOf(0) }
+    var manualDisconnect by remember { mutableStateOf(false) }
     var lastRecoveryMessage by remember { mutableStateOf("Sin recuperaciones solicitadas") }
     var traffic by remember { mutableStateOf<TrafficSnapshot?>(null) }
     var trafficError by remember { mutableStateOf("Conecta el túnel para consultar los contadores.") }
@@ -106,11 +107,17 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
             val permission = VpnService.prepare(context)
             if (permission != null) { vpnPermission.launch(permission); return }
         }
+        val disconnectRequested = tunnelStatus == TunnelStatus.CONNECTED
+        if (disconnectRequested) {
+            manualDisconnect = true
+            recoveryEvents = 0
+        }
         busy = true
         scope.launch {
             val result = withContext(Dispatchers.IO) {
-                if (tunnelStatus == TunnelStatus.CONNECTED) controller.disconnect() else controller.connect()
+                if (disconnectRequested) controller.disconnect() else controller.connect()
             }
+            if (!disconnectRequested && result.isSuccess && controller.status == TunnelStatus.CONNECTED) manualDisconnect = false
             tunnelStatus = controller.status
             message = result.fold(
                 onSuccess = { if (tunnelStatus == TunnelStatus.CONNECTED) "Túnel WireGuard activado" else "Túnel desconectado" },
@@ -126,16 +133,18 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
                 if (initialEvent) { initialEvent = false; return }
-                if (autoRecovery) recoveryEvents++
+                scope.launch {
+                    if (autoRecovery && !manualDisconnect && tunnelStatus == TunnelStatus.CONNECTED && !busy) recoveryEvents++
+                }
             }
         }
         if (autoRecovery) runCatching { cm.registerDefaultNetworkCallback(callback) }
         onDispose { if (autoRecovery) runCatching { cm.unregisterNetworkCallback(callback) } }
     }
     LaunchedEffect(recoveryEvents) {
-        if (recoveryEvents == 0 || !autoRecovery || tunnelStatus != TunnelStatus.CONNECTED || busy) return@LaunchedEffect
+        if (recoveryEvents == 0 || !autoRecovery || manualDisconnect || tunnelStatus != TunnelStatus.CONNECTED || busy) return@LaunchedEffect
         delay(2500)
-        if (!autoRecovery || tunnelStatus != TunnelStatus.CONNECTED || busy) return@LaunchedEffect
+        if (!autoRecovery || manualDisconnect || tunnelStatus != TunnelStatus.CONNECTED || busy) return@LaunchedEffect
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val caps = cm.getNetworkCapabilities(cm.activeNetwork)
         if (caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) != true) {
@@ -182,7 +191,7 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                     Image(painterResource(R.drawable.tmc_vpn_logo_3d), contentDescription = "Logo", modifier = Modifier.size(62.dp))
                     Column {
                         Text("TMC VPN", fontSize = 25.sp, fontWeight = FontWeight.Black, color = Color.White)
-                        Text("ULTIMATE 3.7 • WireGuard", fontSize = 11.sp, color = Color.LightGray)
+                        Text("ULTIMATE 3.8 • WireGuard", fontSize = 11.sp, color = Color.LightGray)
                     }
                 }
                 Spacer(Modifier.height(12.dp))
@@ -269,7 +278,7 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                             Info("Privacidad", "Perfiles cifrados con clave no exportable de Android Keystore.")
                         }
                         5 -> {
-                            Info("Versión", "3.7.0 (preferencia de recuperación persistente)")
+                            Info("Versión", "3.8.0 (protección contra reconexión manual)")
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Text("Recuperar túnel al cambiar de red", modifier = Modifier.weight(1f))
                                 Switch(checked = autoRecovery, onCheckedChange = { enabled ->
