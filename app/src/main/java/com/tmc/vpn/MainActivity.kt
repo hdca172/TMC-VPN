@@ -68,7 +68,8 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
     var message by remember { mutableStateOf("Sin perfil WireGuard") }
     var busy by remember { mutableStateOf(false) }
     var notificationPreference by remember { mutableStateOf(true) }
-    var autoRecovery by remember { mutableStateOf(false) }
+    val recoveryPreferences = remember { context.getSharedPreferences("tmc_vpn_recovery", Context.MODE_PRIVATE) }
+    var autoRecovery by remember { mutableStateOf(recoveryPreferences.getBoolean("enabled", false)) }
     var recoveryEvents by remember { mutableIntStateOf(0) }
     var lastRecoveryMessage by remember { mutableStateOf("Sin recuperaciones solicitadas") }
     var traffic by remember { mutableStateOf<TrafficSnapshot?>(null) }
@@ -181,7 +182,7 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                     Image(painterResource(R.drawable.tmc_vpn_logo_3d), contentDescription = "Logo", modifier = Modifier.size(62.dp))
                     Column {
                         Text("TMC VPN", fontSize = 25.sp, fontWeight = FontWeight.Black, color = Color.White)
-                        Text("ULTIMATE 3.6 • WireGuard", fontSize = 11.sp, color = Color.LightGray)
+                        Text("ULTIMATE 3.7 • WireGuard", fontSize = 11.sp, color = Color.LightGray)
                     }
                 }
                 Spacer(Modifier.height(12.dp))
@@ -268,12 +269,15 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                             Info("Privacidad", "Perfiles cifrados con clave no exportable de Android Keystore.")
                         }
                         5 -> {
-                            Info("Versión", "3.6.0 (selección asistida experimental)")
+                            Info("Versión", "3.7.0 (preferencia de recuperación persistente)")
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Text("Recuperar túnel al cambiar de red", modifier = Modifier.weight(1f))
-                                Switch(checked = autoRecovery, onCheckedChange = { autoRecovery = it })
+                                Switch(checked = autoRecovery, onCheckedChange = { enabled ->
+                                    autoRecovery = enabled
+                                    recoveryPreferences.edit().putBoolean("enabled", enabled).apply()
+                                })
                             }
-                            Info("Alcance", "Experimental y opcional: solo vigila cambios mientras esta pantalla está abierta. WireGuard gestiona normalmente la movilidad entre redes. No es un servicio persistente ni un kill switch.")
+                            Info("Alcance", "La preferencia queda guardada al cerrar y abrir la aplicación. La vigilancia de cambios de red sigue siendo experimental y no es un servicio permanente en segundo plano ni un kill switch.")
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Text("Preferencia de notificaciones", modifier = Modifier.weight(1f))
                                 Switch(checked = notificationPreference, onCheckedChange = { notificationPreference = it })
