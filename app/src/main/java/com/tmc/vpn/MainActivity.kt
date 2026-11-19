@@ -102,7 +102,8 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
         }
     }
     fun toggleConnection() {
-        if (busy || !hasProfile) return\n        if (tunnelStatus == TunnelStatus.CONNECTING) { message = "Espera a que termine la conexión"; return }
+        if (busy || !hasProfile) return
+        if (tunnelStatus == TunnelStatus.CONNECTING) { message = "Espera a que termine la conexión"; return }
         if (tunnelStatus != TunnelStatus.CONNECTED) {
             val permission = VpnService.prepare(context)
             if (permission != null) { vpnPermission.launch(permission); return }
