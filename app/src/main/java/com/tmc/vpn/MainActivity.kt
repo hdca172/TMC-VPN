@@ -135,6 +135,7 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
             override fun onAvailable(network: Network) {
                 if (initialEvent) { initialEvent = false; return }
                 scope.launch {
+                    refresh++
                     if (autoRecovery && !manualDisconnect && tunnelStatus == TunnelStatus.CONNECTED && !busy) recoveryEvents++
                 }
             }
@@ -192,7 +193,7 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                     Image(painterResource(R.drawable.tmc_vpn_logo_3d), contentDescription = "Logo", modifier = Modifier.size(62.dp))
                     Column {
                         Text("TMC VPN", fontSize = 25.sp, fontWeight = FontWeight.Black, color = Color.White)
-                        Text("ULTIMATE 4.0 • WireGuard", fontSize = 11.sp, color = Color.LightGray)
+                        Text("ULTIMATE 4.1 • WireGuard", fontSize = 11.sp, color = Color.LightGray)
                     }
                 }
                 Spacer(Modifier.height(12.dp))
@@ -204,7 +205,7 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                             Spacer(Modifier.height(14.dp))
                             Image(painterResource(R.drawable.tmc_vpn_logo_3d), contentDescription = null, modifier = Modifier.size(140.dp))
                             val active = tunnelStatus == TunnelStatus.CONNECTED
-                            Text(if (active) "TÚNEL ACTIVO" else "DESCONECTADO", color = if (active) Green else Red, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                            Text(when (tunnelStatus) { TunnelStatus.CONNECTED -> "TÚNEL ACTIVO"; TunnelStatus.CONNECTING -> "CONECTANDO…"; TunnelStatus.ERROR -> "ERROR DE CONEXIÓN"; else -> "DESCONECTADO" }, color = if (active) Green else Red, fontSize = 24.sp, fontWeight = FontWeight.Bold)
                             Text(message, textAlign = TextAlign.Center, color = Color.LightGray)
                             Spacer(Modifier.height(16.dp))
                             Button(onClick = { toggleConnection() }, enabled = hasProfile && !busy, modifier = Modifier.fillMaxWidth()) {
@@ -262,6 +263,7 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                             Info("Validación de Internet", diagnostics.internet)
                             Info("DNS configurados", diagnostics.dns)
                             Info("Ruta de conexión", diagnostics.route)
+                            Info("Estado WireGuard", when (tunnelStatus) { TunnelStatus.CONNECTED -> "Conectado"; TunnelStatus.CONNECTING -> "Conectando"; TunnelStatus.ERROR -> "Error; revisa la pantalla Inicio"; else -> "Desconectado" })
                             Button(onClick = { refresh++ }) { Text("Actualizar diagnóstico") }
                             Info("Nota", "La validación del sistema no garantiza ausencia de fugas DNS. La latencia real requiere una prueba activa.")
                         }
