@@ -10,8 +10,8 @@ android {
         applicationId = "com.tmc.vpn"
         minSdk = 26
         targetSdk = 35
-        versionCode = 8
-        versionName = "3.7.0"
+        versionCode = 9
+        versionName = "4.0.0"
     }
     buildFeatures { compose = true }
     compileOptions {
