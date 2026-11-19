@@ -23,6 +23,7 @@ class WireGuardController(context: Context) {
     var status: TunnelStatus = TunnelStatus.DISCONNECTED
         private set
 
+    @Synchronized
     fun importProfile(raw: String): Result<Unit> = runCatching {
         require(raw.length <= 65536) { "Perfil demasiado grande" }
         val parsed = Config.parse(ByteArrayInputStream(raw.toByteArray(StandardCharsets.UTF_8)))
@@ -33,6 +34,7 @@ class WireGuardController(context: Context) {
 
     fun hasProfile(): Boolean = config != null
 
+    @Synchronized
     fun connect(): Result<Unit> = runCatching {
         val profile = requireNotNull(config) { "Importa primero un perfil WireGuard válido" }
         status = TunnelStatus.CONNECTING
@@ -46,12 +48,14 @@ class WireGuardController(context: Context) {
         }
     }
 
+    @Synchronized
     fun trafficSnapshot(): Result<TrafficSnapshot> = runCatching {
         check(status == TunnelStatus.CONNECTED) { "El túnel no está conectado" }
         val stats = backend.getStatistics(tunnel)
         TrafficSnapshot(stats.totalRx(), stats.totalTx())
     }
 
+    @Synchronized
     fun disconnect(): Result<Unit> = runCatching {
         try {
             backend.setState(tunnel, Tunnel.State.DOWN, null)

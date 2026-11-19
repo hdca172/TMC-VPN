@@ -88,7 +88,7 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
             runCatching {
                 val text = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
                     ?: error("No se pudo leer el archivo")
-                check(tunnelStatus != TunnelStatus.CONNECTED) { "Desconecta el túnel antes de cambiar de perfil" }
+                check(tunnelStatus == TunnelStatus.DISCONNECTED && !busy) { "Espera a que finalice la operación VPN antes de importar" }
                 val imported = catalog.add("Perfil importado " + (catalog.list().size + 1))
                 try { profileStore.save(imported.id, text); controller.importProfile(profileStore.load(imported.id)).getOrThrow() }
                 catch (e: Exception) { profileStore.delete(imported.id); catalog.remove(imported.id); throw e }
@@ -191,7 +191,7 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                     Image(painterResource(R.drawable.tmc_vpn_logo_3d), contentDescription = "Logo", modifier = Modifier.size(62.dp))
                     Column {
                         Text("TMC VPN", fontSize = 25.sp, fontWeight = FontWeight.Black, color = Color.White)
-                        Text("ULTIMATE 3.8 • WireGuard", fontSize = 11.sp, color = Color.LightGray)
+                        Text("ULTIMATE 3.9 • WireGuard", fontSize = 11.sp, color = Color.LightGray)
                     }
                 }
                 Spacer(Modifier.height(12.dp))
@@ -223,14 +223,14 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                                 Info("Sugerencia local", suggested.name + if (suggested.favorite) " • Favorito" else " • Primer perfil disponible")
                                 Info("Criterio", "Ordena perfiles guardados priorizando favoritos. No mide latencia, disponibilidad ni velocidad. Selecciona manualmente antes de conectar.")
                                 Button(onClick = {
-                                    if (tunnelStatus == TunnelStatus.CONNECTED || busy) {
+                                    if (tunnelStatus != TunnelStatus.DISCONNECTED || busy) {
                                         message = "Desconecta el túnel antes de seleccionar otro servidor"
                                     } else {
                                         runCatching { controller.importProfile(profileStore.load(suggested.id)).getOrThrow() }
                                             .onSuccess { selectedServerId = suggested.id; hasProfile = true; message = "Perfil sugerido seleccionado: " + suggested.name }
                                             .onFailure { message = "No se pudo cargar el perfil sugerido: ${it.localizedMessage ?: "error"}" }
                                     }
-                                }, enabled = tunnelStatus != TunnelStatus.CONNECTED && !busy) { Text("Seleccionar sugerido") }
+                                }, enabled = tunnelStatus == TunnelStatus.DISCONNECTED && !busy) { Text("Seleccionar sugerido") }
                             }
                             if (servers.isEmpty()) Info("Catálogo vacío", "Importa tu primer perfil .conf para comenzar.")
                             servers.forEach { server ->
@@ -240,8 +240,8 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                                     Text("Latencia: sin medir", color = Color.LightGray, fontSize = 12.sp)
                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                         TextButton(onClick = {
-                                            if (tunnelStatus == TunnelStatus.CONNECTED) {
-                                                message = "Desconecta el túnel antes de seleccionar otro servidor"
+                                            if (tunnelStatus != TunnelStatus.DISCONNECTED || busy) {
+                                                message = "Espera a que finalice la operación VPN antes de seleccionar otro servidor"
                                             } else {
                                             runCatching { controller.importProfile(profileStore.load(server.id)).getOrThrow() }
                                                 .onSuccess { selectedServerId = server.id; hasProfile = true; message = "Perfil seleccionado: " + server.name }
@@ -249,7 +249,7 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                                             }
                                         }) { Text("Seleccionar") }
                                         TextButton(onClick = { catalog.toggleFavorite(server.id); catalogVersion++ }) { Text(if (server.favorite) "★" else "☆") }
-                                        TextButton(onClick = { if (tunnelStatus != TunnelStatus.CONNECTED) { profileStore.delete(server.id); catalog.remove(server.id); catalogVersion++; if (selectedServerId == server.id) { selectedServerId = null; hasProfile = false } } else message = "Desconecta antes de eliminar un servidor" }) { Text("Eliminar") }
+                                        TextButton(onClick = { if (tunnelStatus == TunnelStatus.DISCONNECTED && !busy) { profileStore.delete(server.id); catalog.remove(server.id); catalogVersion++; if (selectedServerId == server.id) { selectedServerId = null; hasProfile = false } } else message = "Desconecta antes de eliminar un servidor" }) { Text("Eliminar") }
                                     }
                                 }
                             }
@@ -278,7 +278,7 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                             Info("Privacidad", "Perfiles cifrados con clave no exportable de Android Keystore.")
                         }
                         5 -> {
-                            Info("Versión", "3.8.0 (protección contra reconexión manual)")
+                            Info("Versión", "3.9.0 (operaciones WireGuard serializadas)")
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Text("Recuperar túnel al cambiar de red", modifier = Modifier.weight(1f))
                                 Switch(checked = autoRecovery, onCheckedChange = { enabled ->
