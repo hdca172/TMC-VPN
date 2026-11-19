@@ -73,10 +73,18 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
     var recoveryEvents by remember { mutableIntStateOf(0) }
     var manualDisconnect by remember { mutableStateOf(false) }
     var lastRecoveryMessage by remember { mutableStateOf("Sin recuperaciones solicitadas") }
-    var connectionHistory by remember { mutableStateOf(listOf<String>()) }
+    val historyPreferences = remember { context.getSharedPreferences("tmc_vpn_history", Context.MODE_PRIVATE) }
+    var connectionHistory by remember {
+        mutableStateOf(runCatching {
+            val saved = org.json.JSONArray(historyPreferences.getString("events", "[]"))
+            (0 until saved.length()).map { saved.getString(it) }.take(20)
+        }.getOrDefault(emptyList()))
+    }
     fun recordEvent(event: String) {
-        val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
-        connectionHistory = (listOf("$timestamp • $event") + connectionHistory).take(20)
+        val timestamp = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
+        val updated = (listOf("$timestamp • $event") + connectionHistory).take(20)
+        connectionHistory = updated
+        historyPreferences.edit().putString("events", org.json.JSONArray(updated).toString()).apply()
     }
     var traffic by remember { mutableStateOf<TrafficSnapshot?>(null) }
     var trafficError by remember { mutableStateOf("Conecta el túnel para consultar los contadores.") }
@@ -200,7 +208,7 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                     Image(painterResource(R.drawable.tmc_vpn_logo_3d), contentDescription = "Logo", modifier = Modifier.size(62.dp))
                     Column {
                         Text("TMC VPN", fontSize = 25.sp, fontWeight = FontWeight.Black, color = Color.White)
-                        Text("ULTIMATE 4.2 • WireGuard", fontSize = 11.sp, color = Color.LightGray)
+                        Text("ULTIMATE 4.3 • WireGuard", fontSize = 11.sp, color = Color.LightGray)
                     }
                 }
                 Spacer(Modifier.height(12.dp))
@@ -274,8 +282,8 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                             Button(onClick = { refresh++ }) { Text("Actualizar diagnóstico") }
                             Info("Nota", "La validación del sistema no garantiza ausencia de fugas DNS. La latencia real requiere una prueba activa.")
                             Info("Historial de esta sesión", if (connectionHistory.isEmpty()) "Todavía no hay eventos de conexión." else connectionHistory.joinToString("\n"))
-                            Button(onClick = { connectionHistory = emptyList() }, enabled = connectionHistory.isNotEmpty()) { Text("Limpiar historial") }
-                            Info("Privacidad del historial", "Solo en memoria durante esta sesión; no almacena claves, perfiles ni direcciones IP.")
+                            Button(onClick = { connectionHistory = emptyList(); historyPreferences.edit().remove("events").apply() }, enabled = connectionHistory.isNotEmpty()) { Text("Limpiar historial") }
+                            Info("Privacidad del historial", "Guardado localmente entre sesiones (máximo 20 eventos), sin claves, perfiles ni direcciones IP. Puedes borrarlo aquí.")
                         }
                         3 -> {
                             Info("Estado del túnel", tunnelStatus.name)
@@ -291,7 +299,7 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                             Info("Privacidad", "Perfiles cifrados con clave no exportable de Android Keystore.")
                         }
                         5 -> {
-                            Info("Versión", "4.2.0 (historial y diagnóstico)")
+                            Info("Versión", "4.3.0 (historial persistente y diagnóstico)")
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Text("Recuperar túnel al cambiar de red", modifier = Modifier.weight(1f))
                                 Switch(checked = autoRecovery, onCheckedChange = { enabled ->
