@@ -73,6 +73,11 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
     var recoveryEvents by remember { mutableIntStateOf(0) }
     var manualDisconnect by remember { mutableStateOf(false) }
     var lastRecoveryMessage by remember { mutableStateOf("Sin recuperaciones solicitadas") }
+    var connectionHistory by remember { mutableStateOf(listOf<String>()) }
+    fun recordEvent(event: String) {
+        val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
+        connectionHistory = (listOf("$timestamp • $event") + connectionHistory).take(20)
+    }
     var traffic by remember { mutableStateOf<TrafficSnapshot?>(null) }
     var trafficError by remember { mutableStateOf("Conecta el túnel para consultar los contadores.") }
     val scope = rememberCoroutineScope()
@@ -124,6 +129,7 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                 onSuccess = { if (tunnelStatus == TunnelStatus.CONNECTED) "Túnel WireGuard activado" else "Túnel desconectado" },
                 onFailure = { "Error VPN: ${it.localizedMessage ?: "desconocido"}" }
             )
+            recordEvent(if (result.isSuccess) { if (disconnectRequested) "Desconexión manual" else "Conexión activada" } else { if (disconnectRequested) "Error al desconectar" else "Error al conectar" })
             busy = false
         }
     }
@@ -140,8 +146,8 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                 }
             }
         }
-        if (autoRecovery) runCatching { cm.registerDefaultNetworkCallback(callback) }
-        onDispose { if (autoRecovery) runCatching { cm.unregisterNetworkCallback(callback) } }
+        runCatching { cm.registerDefaultNetworkCallback(callback) }
+        onDispose { runCatching { cm.unregisterNetworkCallback(callback) } }
     }
     LaunchedEffect(recoveryEvents) {
         if (recoveryEvents == 0 || !autoRecovery || manualDisconnect || tunnelStatus != TunnelStatus.CONNECTED || busy) return@LaunchedEffect
@@ -156,6 +162,7 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
         busy = true
         val result = withContext(Dispatchers.IO) { controller.connect() }
         tunnelStatus = controller.status
+        recordEvent(if (result.isSuccess) "Reconexión solicitada tras cambio de red" else "Error de reconexión")
         lastRecoveryMessage = result.fold(
             onSuccess = { "Reactivación solicitada al cambiar de red" },
             onFailure = { "No se pudo reactivar: ${it.localizedMessage ?: "error"}" }
@@ -193,7 +200,7 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                     Image(painterResource(R.drawable.tmc_vpn_logo_3d), contentDescription = "Logo", modifier = Modifier.size(62.dp))
                     Column {
                         Text("TMC VPN", fontSize = 25.sp, fontWeight = FontWeight.Black, color = Color.White)
-                        Text("ULTIMATE 4.1 • WireGuard", fontSize = 11.sp, color = Color.LightGray)
+                        Text("ULTIMATE 4.2 • WireGuard", fontSize = 11.sp, color = Color.LightGray)
                     }
                 }
                 Spacer(Modifier.height(12.dp))
@@ -266,6 +273,9 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                             Info("Estado WireGuard", when (tunnelStatus) { TunnelStatus.CONNECTED -> "Conectado"; TunnelStatus.CONNECTING -> "Conectando"; TunnelStatus.ERROR -> "Error; revisa la pantalla Inicio"; else -> "Desconectado" })
                             Button(onClick = { refresh++ }) { Text("Actualizar diagnóstico") }
                             Info("Nota", "La validación del sistema no garantiza ausencia de fugas DNS. La latencia real requiere una prueba activa.")
+                            Info("Historial de esta sesión", if (connectionHistory.isEmpty()) "Todavía no hay eventos de conexión." else connectionHistory.joinToString("\\n"))
+                            Button(onClick = { connectionHistory = emptyList() }, enabled = connectionHistory.isNotEmpty()) { Text("Limpiar historial") }
+                            Info("Privacidad del historial", "Solo en memoria durante esta sesión; no almacena claves, perfiles ni direcciones IP.")
                         }
                         3 -> {
                             Info("Estado del túnel", tunnelStatus.name)
@@ -281,7 +291,7 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                             Info("Privacidad", "Perfiles cifrados con clave no exportable de Android Keystore.")
                         }
                         5 -> {
-                            Info("Versión", "4.0.0 (estabilidad y diagnóstico)")
+                            Info("Versión", "4.2.0 (historial y diagnóstico)")
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Text("Recuperar túnel al cambiar de red", modifier = Modifier.weight(1f))
                                 Switch(checked = autoRecovery, onCheckedChange = { enabled ->
