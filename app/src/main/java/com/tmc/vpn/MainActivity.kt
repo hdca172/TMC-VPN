@@ -273,7 +273,7 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                             Info("Estado WireGuard", when (tunnelStatus) { TunnelStatus.CONNECTED -> "Conectado"; TunnelStatus.CONNECTING -> "Conectando"; TunnelStatus.ERROR -> "Error; revisa la pantalla Inicio"; else -> "Desconectado" })
                             Button(onClick = { refresh++ }) { Text("Actualizar diagnóstico") }
                             Info("Nota", "La validación del sistema no garantiza ausencia de fugas DNS. La latencia real requiere una prueba activa.")
-                            Info("Historial de esta sesión", if (connectionHistory.isEmpty()) "Todavía no hay eventos de conexión." else connectionHistory.joinToString("\\n"))
+                            Info("Historial de esta sesión", if (connectionHistory.isEmpty()) "Todavía no hay eventos de conexión." else connectionHistory.joinToString("\n"))
                             Button(onClick = { connectionHistory = emptyList() }, enabled = connectionHistory.isNotEmpty()) { Text("Limpiar historial") }
                             Info("Privacidad del historial", "Solo en memoria durante esta sesión; no almacena claves, perfiles ni direcciones IP.")
                         }
