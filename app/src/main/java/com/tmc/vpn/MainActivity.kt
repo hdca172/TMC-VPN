@@ -102,7 +102,7 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
         }
     }
     fun toggleConnection() {
-        if (busy || !hasProfile) return
+        if (busy || !hasProfile) return\n        if (tunnelStatus == TunnelStatus.CONNECTING) { message = "Espera a que termine la conexión"; return }
         if (tunnelStatus != TunnelStatus.CONNECTED) {
             val permission = VpnService.prepare(context)
             if (permission != null) { vpnPermission.launch(permission); return }
@@ -191,7 +191,7 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                     Image(painterResource(R.drawable.tmc_vpn_logo_3d), contentDescription = "Logo", modifier = Modifier.size(62.dp))
                     Column {
                         Text("TMC VPN", fontSize = 25.sp, fontWeight = FontWeight.Black, color = Color.White)
-                        Text("ULTIMATE 3.9 • WireGuard", fontSize = 11.sp, color = Color.LightGray)
+                        Text("ULTIMATE 4.0 • WireGuard", fontSize = 11.sp, color = Color.LightGray)
                     }
                 }
                 Spacer(Modifier.height(12.dp))
@@ -209,7 +209,7 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                             Button(onClick = { toggleConnection() }, enabled = hasProfile && !busy, modifier = Modifier.fillMaxWidth()) {
                                 Text(if (busy) "Procesando…" else if (active) "Desconectar" else "Conectar WireGuard")
                             }
-                            Button(onClick = { picker.launch(arrayOf("*/*")) }) { Text("Importar perfil .conf") }
+                            Button(onClick = { picker.launch(arrayOf("*/*")) }, enabled = tunnelStatus == TunnelStatus.DISCONNECTED && !busy) { Text("Importar perfil .conf") }
                             Info("Red", network)
                             Info("Estado", if (active) "WireGuard reporta túnel UP. Comprueba conectividad y DNS." else "No hay túnel activo.")
                             Info("Recuperación de red", lastRecoveryMessage)
@@ -253,7 +253,7 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                                     }
                                 }
                             }
-                            Button(onClick = { picker.launch(arrayOf("*/*")) }) { Text("Importar configuración WireGuard") }
+                            Button(onClick = { picker.launch(arrayOf("*/*")) }, enabled = tunnelStatus == TunnelStatus.DISCONNECTED && !busy) { Text("Importar configuración WireGuard") }
                             Info("Seguridad", "Perfiles cifrados con Android Keystore; favoritos guardan metadatos.")
                         }
                         2 -> {
@@ -278,7 +278,7 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                             Info("Privacidad", "Perfiles cifrados con clave no exportable de Android Keystore.")
                         }
                         5 -> {
-                            Info("Versión", "3.9.0 (operaciones WireGuard serializadas)")
+                            Info("Versión", "4.0.0 (estabilidad y diagnóstico)")
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Text("Recuperar túnel al cambiar de red", modifier = Modifier.weight(1f))
                                 Switch(checked = autoRecovery, onCheckedChange = { enabled ->
