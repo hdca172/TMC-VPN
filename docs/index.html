@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b1327">
+<meta name="description" content="Descarga la versión de prueba de TMC VPN V4.5 desde GitHub Actions.">
+<title>TMC VPN V4.5 | Descargas de prueba</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#080f20;color:#edf5ff}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 85% 0%,#16345a 0,transparent 48%),#080f20;min-height:100vh}
+main{max-width:900px;margin:auto;padding:40px 20px 64px}
+header{display:flex;align-items:center;gap:12px;font-weight:800;letter-spacing:.08em}
+.mark{display:grid;place-items:center;width:48px;height:48px;border-radius:14px;background:#103b52;color:#6ce8de;font-size:27px}
+.hero{padding:68px 0 30px}h1{font-size:clamp(2.4rem,7vw,4.5rem);letter-spacing:-.045em;line-height:1.07;margin:0 0 20px}
+p{color:#b8c9dc;line-height:1.65}h2{font-size:1.4rem;margin:0 0 16px}
+.eyebrow{color:#6ce8de;font-weight:700;letter-spacing:.1em;text-transform:uppercase;font-size:.8rem}
+.lead{font-size:1.1rem;max-width:620px}
+.panel{background:#111d32;border:1px solid #2b3b54;border-radius:22px;padding:28px;margin-top:24px}
+.pills{display:flex;gap:9px;flex-wrap:wrap;margin:20px 0}.pill{padding:8px 12px;border-radius:99px;background:#1c3047;color:#d5e6f7;font-size:.85rem}
+.actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:26px}
+a.button{display:inline-flex;align-items:center;justify-content:center;min-height:50px;padding:12px 20px;border-radius:12px;font-weight:700;text-decoration:none}
+.primary{background:#69e1d4;color:#05262b}.secondary{border:1px solid #60718a;color:#e7f2ff}
+a:focus-visible{outline:3px solid #fff;outline-offset:4px}
+ol{padding-left:24px;color:#cbd8e8;line-height:1.8}li{padding:4px 0}
+.notice{border-left:3px solid #e6b95d;padding:6px 15px;background:#332c23;border-radius:0 10px 10px 0;color:#f5e5c1}
+footer{margin-top:44px;color:#9fb1c8;font-size:.9rem}
+footer a{color:#a7f2eb}
+</style>
+</head>
+<body>
+<main>
+<header><span class="mark" aria-hidden="true">⬡</span><span>TMC VPN</span></header>
+<section class="hero" aria-labelledby="heading">
+<p class="eyebrow">Versión de prueba · Android</p>
+<h1 id="heading">Tu VPN.<br>Tu conexión.</h1>
+<p class="lead">TMC VPN V4.5 con soporte WireGuard y administración de perfiles autorizados. Descarga el APK de prueba desde las compilaciones verificadas del repositorio oficial.</p>
+<div class="pills"><span class="pill">Versión 4.5.0</span><span class="pill">Android 8.0+</span><span class="pill">WireGuard</span><span class="pill">APK debug</span></div>
+<div class="actions">
+<a class="button primary" href="https://github.com/hdca172/TMC-VPN/actions/workflows/android-build.yml?query=branch%3Amain">Ver APK en GitHub Actions ↗</a>
+<a class="button secondary" href="https://github.com/hdca172/TMC-VPN">Ver repositorio ↗</a>
+</div>
+</section>
+<section class="panel" aria-labelledby="install">
+<h2 id="install">Cómo descargar e instalar</h2>
+<ol>
+<li>Abre <strong>GitHub Actions</strong> desde el botón superior e inicia sesión en GitHub si te lo solicita.</li>
+<li>Selecciona una ejecución de la rama <strong>main</strong> con estado <strong>Success</strong>.</li>
+<li>En <strong>Artifacts</strong>, descarga <strong>TMC-VPN-V4.5-debug</strong>.</li>
+<li>Extrae el ZIP y abre <strong>app-debug.apk</strong> en tu Android.</li>
+<li>Autoriza temporalmente la instalación desde esa fuente si Android lo solicita y revoca ese permiso después.</li>
+</ol>
+<p class="notice"><strong>Solo para pruebas.</strong> Este APK debug no es una versión de producción firmada. Los artefactos pueden caducar a los 30 días. No descargues APK de enlaces de terceros.</p>
+</section>
+<section class="panel" aria-labelledby="about">
+<h2 id="about">Antes de conectarte</h2>
+<p>Necesitas un perfil WireGuard <code>.conf</code> válido para un servidor propio o autorizado y una conexión a Internet existente. Una VPN no proporciona datos móviles gratuitos.</p>
+<p>Importa tu perfil, selecciona el proveedor o servidor, concede el permiso VPN de Android y comprueba la navegación y el DNS.</p>
+</section>
+<footer>Página informativa preparada para revisión; su publicación requiere aprobación. · <a href="https://github.com/hdca172/TMC-VPN/blob/main/README.md">Guía del proyecto</a></footer>
+</main>
+</body>
+</html>
