@@ -1,8 +1,8 @@
-name: TMC VPN - V3 APK CI
+name: TMC VPN - Android APK CI
 on:
   workflow_dispatch:
   push:
-    branches: [main, feature/v3-ultimate, feature/v3.1-server-catalog, feature/v3.3-diagnostics, feature/v3.4-reconnect, feature/v3.5-traffic-stats, feature/v3.6-smart-selection, feature/v3.7-persistent-recovery]
+    branches: [main]
   pull_request:
 jobs:
   build:
@@ -24,8 +24,10 @@ jobs:
           ls "$ANDROID_HOME/platforms"
       - name: Build debug APK
         run: gradle :app:assembleDebug --no-daemon --stacktrace
-      - uses: actions/upload-artifact@v4
+      - name: Publish debug APK
+        uses: actions/upload-artifact@v4
         with:
-          name: TMC-VPN-V3-debug
+          name: TMC-VPN-V4.5-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+          retention-days: 30
