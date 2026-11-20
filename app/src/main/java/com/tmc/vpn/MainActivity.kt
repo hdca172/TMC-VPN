@@ -208,7 +208,7 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                     Image(painterResource(R.drawable.tmc_vpn_logo_3d), contentDescription = "Logo", modifier = Modifier.size(62.dp))
                     Column {
                         Text("TMC VPN", fontSize = 25.sp, fontWeight = FontWeight.Black, color = Color.White)
-                        Text("ULTIMATE 4.3 • WireGuard", fontSize = 11.sp, color = Color.LightGray)
+                        Text("ULTIMATE 4.4 • Proveedores WireGuard", fontSize = 11.sp, color = Color.LightGray)
                     }
                 }
                 Spacer(Modifier.height(12.dp))
@@ -223,6 +223,48 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                             Text(when (tunnelStatus) { TunnelStatus.CONNECTED -> "TÚNEL ACTIVO"; TunnelStatus.CONNECTING -> "CONECTANDO…"; TunnelStatus.ERROR -> "ERROR DE CONEXIÓN"; else -> "DESCONECTADO" }, color = if (active) Green else Red, fontSize = 24.sp, fontWeight = FontWeight.Bold)
                             Text(message, textAlign = TextAlign.Center, color = Color.LightGray)
                             Spacer(Modifier.height(16.dp))
+                            Text("Proveedor de conexión", color = Cyan, fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth())
+                            Text("WireGuard • Perfiles autorizados", color = Color.LightGray, modifier = Modifier.fillMaxWidth())
+                            val availableProviders = remember(catalogVersion) { catalog.list() }
+                            var providerExpanded by remember { mutableStateOf(false) }
+                            val chosenProvider = availableProviders.firstOrNull { it.id == selectedServerId }
+                            Box(Modifier.fillMaxWidth()) {
+                                OutlinedButton(
+                                    onClick = { providerExpanded = true },
+                                    enabled = tunnelStatus == TunnelStatus.DISCONNECTED && !busy,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(chosenProvider?.name ?: "Seleccionar proveedor / servidor")
+                                }
+                                DropdownMenu(expanded = providerExpanded, onDismissRequest = { providerExpanded = false }) {
+                                    if (availableProviders.isEmpty()) {
+                                        DropdownMenuItem(text = { Text("Importa primero un perfil .conf") }, onClick = { providerExpanded = false })
+                                    }
+                                    availableProviders.forEach { provider ->
+                                        DropdownMenuItem(
+                                            text = { Text(provider.name) },
+                                            onClick = {
+                                                providerExpanded = false
+                                                if (tunnelStatus == TunnelStatus.DISCONNECTED && !busy) {
+                                                    runCatching { controller.importProfile(profileStore.load(provider.id)).getOrThrow() }
+                                                        .onSuccess {
+                                                            selectedServerId = provider.id
+                                                            hasProfile = true
+                                                            message = "Proveedor seleccionado: " + provider.name
+                                                        }
+                                                        .onFailure {
+                                                            selectedServerId = null
+                                                            hasProfile = false
+                                                            message = "Error al cargar proveedor: " + (it.localizedMessage ?: "perfil inválido")
+                                                        }
+                                                }
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                            Text("WireGuard utiliza claves y perfiles .conf, no usuario y contraseña. Otros protocolos requieren integración adicional.", color = Color.LightGray, fontSize = 12.sp)
+                            Spacer(Modifier.height(12.dp))
                             Button(onClick = { toggleConnection() }, enabled = hasProfile && !busy, modifier = Modifier.fillMaxWidth()) {
                                 Text(if (busy) "Procesando…" else if (active) "Desconectar" else "Conectar WireGuard")
                             }
