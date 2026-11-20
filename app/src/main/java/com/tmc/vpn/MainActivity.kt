@@ -10,7 +10,6 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.Crossfade
 import androidx.compose.animation.AnimatedVisibility
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -116,7 +115,9 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
     }
     val scope = rememberCoroutineScope()
     val network = remember(refresh, tunnelStatus) { networkType(context, tunnelStatus) }
-    val diagnostics = remember(refresh, tunnelStatus) { networkDiagnostics(context) }
+    val diagnostics = remember(page, refresh, tunnelStatus) {
+        if (page == 2) networkDiagnostics(context) else null
+    }
     var pendingConnect by remember { mutableStateOf(false) }
     val vpnPermission = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == android.app.Activity.RESULT_OK) pendingConnect = true
@@ -204,13 +205,16 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
         busy = false
     }
     LaunchedEffect(page, tunnelStatus) {
-        traffic = null
-        if (page !in listOf(0, 3) || tunnelStatus != TunnelStatus.CONNECTED) return@LaunchedEffect
+        if (tunnelStatus != TunnelStatus.CONNECTED) {
+            traffic = null
+            return@LaunchedEffect
+        }
+        if (page !in listOf(0, 3)) return@LaunchedEffect
         while (true) {
             val result = withContext(Dispatchers.IO) { controller.trafficSnapshot() }
             result.onSuccess { traffic = it; trafficError = "" }
                 .onFailure { traffic = null; trafficError = it.localizedMessage ?: "Estadísticas no disponibles" }
-            delay(3000)
+            delay(5000)
         }
     }
     LaunchedEffect(pendingConnect) {
@@ -240,9 +244,8 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                 Spacer(Modifier.height(12.dp))
                 Text(pages[page], fontSize = 21.sp, fontWeight = FontWeight.Bold, color = Cyan)
                 Spacer(Modifier.height(10.dp))
-                Crossfade(targetState = page, label = "Navegación TMC VPN", modifier = Modifier.weight(1f)) { currentPage ->
-                    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
-                    when (currentPage) {
+                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
+                    when (page) {
                         0 -> {
                             val active = tunnelStatus == TunnelStatus.CONNECTED
                             val statusText = when (tunnelStatus) {
@@ -331,10 +334,13 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                                         .thenBy { it.name.lowercase(java.util.Locale.getDefault()) }
                                 )
                             }
-                            val visibleServers = servers.filter {
-                                (!onlyFavorites || it.favorite) &&
-                                    (it.name.contains(serverQuery.trim(), ignoreCase = true) ||
-                                        it.country.contains(serverQuery.trim(), ignoreCase = true))
+                            val visibleServers = remember(servers, onlyFavorites, serverQuery) {
+                                val query = serverQuery.trim()
+                                servers.filter {
+                                    (!onlyFavorites || it.favorite) &&
+                                        (it.name.contains(query, ignoreCase = true) ||
+                                            it.country.contains(query, ignoreCase = true))
+                                }
                             }
                             Text("MIS SERVIDORES", color = TmcColors.Accent, fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth())
                             Text("Perfiles WireGuard guardados en este dispositivo", color = TmcColors.TextSecondary, modifier = Modifier.fillMaxWidth())
@@ -413,9 +419,9 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                         }
                         2 -> {
                             Info("Tipo de red", network)
-                            Info("Validación de Internet", diagnostics.internet)
-                            Info("DNS configurados", diagnostics.dns)
-                            Info("Ruta de conexión", diagnostics.route)
+                            Info("Validación de Internet", diagnostics?.internet ?: "No disponible")
+                            Info("DNS configurados", diagnostics?.dns ?: "No disponible")
+                            Info("Ruta de conexión", diagnostics?.route ?: "No disponible")
                             Info("Estado WireGuard", when (tunnelStatus) { TunnelStatus.CONNECTED -> "Conectado"; TunnelStatus.CONNECTING -> "Conectando"; TunnelStatus.ERROR -> "Error; revisa la pantalla Inicio"; else -> "Desconectado" })
                             Button(onClick = { refresh++ }) { Text("Actualizar diagnóstico") }
                             Info("Nota", "La validación del sistema no garantiza ausencia de fugas DNS. La latencia real requiere una prueba activa.")
@@ -518,7 +524,6 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                             Info("Pro", "Concepto futuro, sin suscripciones ni pagos.")
                         }
                     }
-                }
                 }
                 HorizontalDivider(color = Color(0xFF29425F))
                 NavigationBar(containerColor = TmcColors.Surface) {
