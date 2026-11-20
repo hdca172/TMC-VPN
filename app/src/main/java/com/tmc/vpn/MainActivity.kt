@@ -416,11 +416,42 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                             Info("Privacidad del historial", "Guardado localmente entre sesiones (máximo 20 eventos), sin claves, perfiles ni direcciones IP. Puedes borrarlo aquí.")
                         }
                         3 -> {
-                            Info("Estado del túnel", tunnelStatus.name)
-                            Info("Recibido (WireGuard)", traffic?.let { formatTraffic(it.receivedBytes) } ?: "No disponible")
-                            Info("Enviado (WireGuard)", traffic?.let { formatTraffic(it.sentBytes) } ?: "No disponible")
-                            if (traffic == null) Info("Estado de lectura", trafficError)
-                            Info("Medición", "Contadores del túnel actual, actualizados cada 3 segundos mientras ves esta pantalla. No son el consumo total de datos móviles.")
+                            val active = tunnelStatus == TunnelStatus.CONNECTED
+                            val chosenServer = remember(catalogVersion, selectedServerId) {
+                                catalog.list().firstOrNull { it.id == selectedServerId }
+                            }
+                            Text("TRÁFICO WIREGUARD", color = TmcColors.Accent, fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth())
+                            Spacer(Modifier.height(8.dp))
+                            TmcStatusCard(
+                                status = when (tunnelStatus) {
+                                    TunnelStatus.CONNECTED -> "Conectado"
+                                    TunnelStatus.CONNECTING -> "Conectando…"
+                                    TunnelStatus.ERROR -> "Error de conexión"
+                                    else -> "Desconectado"
+                                },
+                                detail = chosenServer?.name ?: "Sin perfil seleccionado"
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                TmcTrafficCard("RECIBIDO (RX)", if (active) traffic?.let { formatTraffic(it.receivedBytes) } else null, Modifier.weight(1f))
+                                TmcTrafficCard("ENVIADO (TX)", if (active) traffic?.let { formatTraffic(it.sentBytes) } else null, Modifier.weight(1f))
+                            }
+                            Spacer(Modifier.height(12.dp))
+                            Info(
+                                "Tiempo observado en la aplicación",
+                                if (active) "%02d:%02d:%02d".format(
+                                    java.util.Locale.US, sessionSeconds / 3600,
+                                    (sessionSeconds / 60) % 60, sessionSeconds % 60
+                                ) else "No hay sesión activa"
+                            )
+                            if (active && traffic == null) {
+                                Info("Estado de lectura", trafficError)
+                            }
+                            Info(
+                                "Origen de los datos",
+                                "Contadores reales del túnel WireGuard. Se actualizan cada 3 segundos al visualizar Inicio o Estadísticas. No representan el consumo total de datos móviles."
+                            )
+                            Info("Alcance del tiempo", "Tiempo observado desde que esta pantalla de la aplicación detectó la conexión; no es un historial persistente del túnel.")
                         }
                         4 -> {
                             Info("WireGuard", if (hasProfile) "Perfil válido importado en memoria" else "Sin perfil")
@@ -429,21 +460,49 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                             Info("Privacidad", "Perfiles cifrados con clave no exportable de Android Keystore.")
                         }
                         5 -> {
-                            Info("Versión", "4.3.0 (historial persistente y diagnóstico)")
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Text("Recuperar túnel al cambiar de red", modifier = Modifier.weight(1f))
-                                Switch(checked = autoRecovery, onCheckedChange = { enabled ->
-                                    autoRecovery = enabled
-                                    recoveryPreferences.edit().putBoolean("enabled", enabled).apply()
-                                })
+                            Text("PREFERENCIAS", color = TmcColors.Accent, fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth())
+                            Spacer(Modifier.height(10.dp))
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(18.dp),
+                                colors = CardDefaults.cardColors(containerColor = TmcColors.Surface)
+                            ) {
+                                Column(Modifier.padding(16.dp)) {
+                                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text("Recuperación automática", color = TmcColors.TextPrimary, fontWeight = FontWeight.SemiBold)
+                                            Text("Preferencia guardada en este dispositivo", color = TmcColors.TextSecondary, fontSize = 12.sp)
+                                        }
+                                        Switch(checked = autoRecovery, onCheckedChange = { enabled ->
+                                            autoRecovery = enabled
+                                            recoveryPreferences.edit().putBoolean("enabled", enabled).apply()
+                                        })
+                                    }
+                                    HorizontalDivider(color = Color(0xFF29425F))
+                                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text("Preferencia de notificaciones", color = TmcColors.TextPrimary, fontWeight = FontWeight.SemiBold)
+                                            Text("No cambia los permisos de Android", color = TmcColors.TextSecondary, fontSize = 12.sp)
+                                        }
+                                        Switch(checked = notificationPreference, onCheckedChange = { notificationPreference = it })
+                                    }
+                                }
                             }
-                            Info("Alcance", "La preferencia queda guardada al cerrar y abrir la aplicación. La vigilancia de cambios de red sigue siendo experimental y no es un servicio permanente en segundo plano ni un kill switch.")
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Text("Preferencia de notificaciones", modifier = Modifier.weight(1f))
-                                Switch(checked = notificationPreference, onCheckedChange = { notificationPreference = it })
+                            Spacer(Modifier.height(12.dp))
+                            TmcStatusCard(
+                                status = "Seguridad WireGuard",
+                                detail = "Los perfiles guardados están cifrados con Android Keystore. Configura VPN siempre activa y Bloquear sin VPN desde los ajustes de Android."
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            Info(
+                                "Recuperación de red",
+                                "La vigilancia funciona mientras la actividad está visible. No es un servicio permanente en segundo plano ni un kill switch."
+                            )
+                            Info("Versión instalada", context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "No disponible")
+                            Info("Interfaz en desarrollo", "TMC VPN V4.6-P4 • APK de prueba, sin publicación de versión final.")
+                            Button(onClick = { welcome = true }, modifier = Modifier.fillMaxWidth()) {
+                                Text("Pantalla de bienvenida")
                             }
-                            Info("Aviso", "Esta preferencia todavía no cambia los permisos de Android.")
-                            Button(onClick = { welcome = true }) { Text("Pantalla de bienvenida") }
                         }
                         else -> {
                             Info("Cuenta", "Sin registro obligatorio.")
