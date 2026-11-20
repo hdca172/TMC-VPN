@@ -315,46 +315,93 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                             Info("Recuperación de red", lastRecoveryMessage)
                         }
                         1 -> {
-                            Text("🇩🇴 INTERNET REPÚBLICA DOMINICANA", color = Cyan, fontWeight = FontWeight.Bold)
-                            Info("Servidores gratuitos", "Sin servidores públicos verificados. Agrega solamente perfiles WireGuard autorizados.")
-                            val servers = remember(catalogVersion) { catalog.list().sortedWith(compareByDescending<com.tmc.vpn.servers.VpnServer> { it.favorite }.thenBy { it.name }) }
-                            val suggested = servers.firstOrNull { it.favorite } ?: servers.firstOrNull()
-                            if (suggested != null) {
-                                Info("Sugerencia local", suggested.name + if (suggested.favorite) " • Favorito" else " • Primer perfil disponible")
-                                Info("Criterio", "Ordena perfiles guardados priorizando favoritos. No mide latencia, disponibilidad ni velocidad. Selecciona manualmente antes de conectar.")
-                                Button(onClick = {
-                                    if (tunnelStatus != TunnelStatus.DISCONNECTED || busy) {
-                                        message = "Desconecta el túnel antes de seleccionar otro servidor"
-                                    } else {
-                                        runCatching { controller.importProfile(profileStore.load(suggested.id)).getOrThrow() }
-                                            .onSuccess { selectedServerId = suggested.id; hasProfile = true; message = "Perfil sugerido seleccionado: " + suggested.name }
-                                            .onFailure { message = "No se pudo cargar el perfil sugerido: ${it.localizedMessage ?: "error"}" }
-                                    }
-                                }, enabled = tunnelStatus == TunnelStatus.DISCONNECTED && !busy) { Text("Seleccionar sugerido") }
+                            var serverQuery by remember { mutableStateOf("") }
+                            var onlyFavorites by remember { mutableStateOf(false) }
+                            val servers = remember(catalogVersion) {
+                                catalog.list().sortedWith(
+                                    compareByDescending<com.tmc.vpn.servers.VpnServer> { it.favorite }
+                                        .thenBy { it.name.lowercase(java.util.Locale.getDefault()) }
+                                )
                             }
-                            if (servers.isEmpty()) Info("Catálogo vacío", "Importa tu primer perfil .conf para comenzar.")
-                            servers.forEach { server ->
-                                Column(Modifier.fillMaxWidth().padding(vertical = 4.dp).background(Panel, RoundedCornerShape(14.dp)).padding(12.dp)) {
-                                    Text(server.name + if (selectedServerId == server.id) " • Seleccionado" else "", color = Color.White, fontWeight = FontWeight.Bold)
-                                    Text(if (server.kind == ServerKind.FREE) "Gratuito verificado" else "Personalizado", color = Color.LightGray)
-                                    Text("Latencia: sin medir", color = Color.LightGray, fontSize = 12.sp)
-                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        TextButton(onClick = {
-                                            if (tunnelStatus != TunnelStatus.DISCONNECTED || busy) {
-                                                message = "Espera a que finalice la operación VPN antes de seleccionar otro servidor"
-                                            } else {
+                            val visibleServers = servers.filter {
+                                (!onlyFavorites || it.favorite) &&
+                                    (it.name.contains(serverQuery.trim(), ignoreCase = true) ||
+                                        it.country.contains(serverQuery.trim(), ignoreCase = true))
+                            }
+                            Text("MIS SERVIDORES", color = TmcColors.Accent, fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth())
+                            Text("Perfiles WireGuard guardados en este dispositivo", color = TmcColors.TextSecondary, modifier = Modifier.fillMaxWidth())
+                            Spacer(Modifier.height(12.dp))
+                            OutlinedTextField(
+                                value = serverQuery,
+                                onValueChange = { serverQuery = it },
+                                label = { Text("Buscar servidor") },
+                                placeholder = { Text("Nombre o país") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text("Solo favoritos", color = TmcColors.TextPrimary, modifier = Modifier.weight(1f))
+                                Switch(checked = onlyFavorites, onCheckedChange = { onlyFavorites = it })
+                            }
+                            Text("${visibleServers.size} de ${servers.size} perfiles", color = TmcColors.TextSecondary, modifier = Modifier.fillMaxWidth())
+                            if (servers.isEmpty()) {
+                                TmcStatusCard("Sin servidores", "Importa un perfil WireGuard .conf autorizado para comenzar.")
+                            } else if (visibleServers.isEmpty()) {
+                                TmcStatusCard("Sin coincidencias", "Prueba otra búsqueda o desactiva el filtro de favoritos.")
+                            }
+                            visibleServers.forEach { server ->
+                                Spacer(Modifier.height(8.dp))
+                                TmcServerCard(
+                                    name = server.name,
+                                    subtitle = "${server.country} • " + if (server.kind == ServerKind.FREE) "Perfil gratuito guardado" else "Perfil personalizado",
+                                    selected = selectedServerId == server.id,
+                                    enabled = tunnelStatus == TunnelStatus.DISCONNECTED && !busy,
+                                    onClick = {
+                                        if (tunnelStatus == TunnelStatus.DISCONNECTED && !busy) {
                                             runCatching { controller.importProfile(profileStore.load(server.id)).getOrThrow() }
-                                                .onSuccess { selectedServerId = server.id; hasProfile = true; message = "Perfil seleccionado: " + server.name }
-                                                .onFailure { selectedServerId = null; hasProfile = false; message = "No se pudo cargar el perfil" }
-                                            }
-                                        }) { Text("Seleccionar") }
-                                        TextButton(onClick = { catalog.toggleFavorite(server.id); catalogVersion++ }) { Text(if (server.favorite) "★" else "☆") }
-                                        TextButton(onClick = { if (tunnelStatus == TunnelStatus.DISCONNECTED && !busy) { profileStore.delete(server.id); catalog.remove(server.id); catalogVersion++; if (selectedServerId == server.id) { selectedServerId = null; hasProfile = false } } else message = "Desconecta antes de eliminar un servidor" }) { Text("Eliminar") }
+                                                .onSuccess {
+                                                    selectedServerId = server.id
+                                                    hasProfile = true
+                                                    message = "Perfil seleccionado: " + server.name
+                                                }
+                                                .onFailure {
+                                                    message = "No se pudo cargar el perfil: " + (it.localizedMessage ?: "error")
+                                                }
+                                        }
                                     }
+                                )
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                    TextButton(
+                                        onClick = {
+                                            catalog.toggleFavorite(server.id)
+                                            catalogVersion++
+                                        }
+                                    ) { Text(if (server.favorite) "★ Favorito" else "☆ Favorito") }
+                                    TextButton(
+                                        enabled = tunnelStatus == TunnelStatus.DISCONNECTED && !busy,
+                                        onClick = {
+                                            if (tunnelStatus == TunnelStatus.DISCONNECTED && !busy) {
+                                                profileStore.delete(server.id)
+                                                catalog.remove(server.id)
+                                                catalogVersion++
+                                                if (selectedServerId == server.id) {
+                                                    selectedServerId = null
+                                                    hasProfile = false
+                                                }
+                                                message = "Perfil eliminado: " + server.name
+                                            }
+                                        }
+                                    ) { Text("Eliminar") }
                                 }
                             }
-                            Button(onClick = { picker.launch(arrayOf("*/*")) }, enabled = tunnelStatus == TunnelStatus.DISCONNECTED && !busy) { Text("Importar configuración WireGuard") }
-                            Info("Seguridad", "Perfiles cifrados con Android Keystore; favoritos guardan metadatos.")
+                            Spacer(Modifier.height(14.dp))
+                            Button(
+                                onClick = { picker.launch(arrayOf("*/*")) },
+                                enabled = tunnelStatus == TunnelStatus.DISCONNECTED && !busy,
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Importar configuración WireGuard (.conf)") }
+                            Text("Para cambiar o eliminar un perfil, desconecta primero la VPN. La búsqueda y los favoritos no alteran claves ni configuraciones.", color = TmcColors.TextSecondary, fontSize = 12.sp)
+                            Info("Disponibilidad", "La lista muestra perfiles guardados; no confirma latencia, velocidad ni disponibilidad del servidor.")
                         }
                         2 -> {
                             Info("Tipo de red", network)
