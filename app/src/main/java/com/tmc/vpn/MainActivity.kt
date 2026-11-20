@@ -34,6 +34,11 @@ import com.tmc.vpn.servers.SecureProfileStore
 import com.tmc.vpn.vpn.TrafficSnapshot
 import com.tmc.vpn.vpn.TunnelStatus
 import com.tmc.vpn.vpn.WireGuardController
+import com.tmc.vpn.ui.components.TmcConnectionButton
+import com.tmc.vpn.ui.components.TmcStatusCard
+import com.tmc.vpn.ui.components.TmcServerCard
+import com.tmc.vpn.ui.components.TmcTrafficCard
+import com.tmc.vpn.ui.theme.TmcColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
@@ -88,6 +93,20 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
     }
     var traffic by remember { mutableStateOf<TrafficSnapshot?>(null) }
     var trafficError by remember { mutableStateOf("Conecta el túnel para consultar los contadores.") }
+    var connectedSince by remember { mutableStateOf<Long?>(null) }
+    var sessionSeconds by remember { mutableLongStateOf(0L) }
+    LaunchedEffect(tunnelStatus) {
+        if (tunnelStatus == TunnelStatus.CONNECTED) {
+            if (connectedSince == null) connectedSince = android.os.SystemClock.elapsedRealtime()
+            while (true) {
+                sessionSeconds = (android.os.SystemClock.elapsedRealtime() - (connectedSince ?: android.os.SystemClock.elapsedRealtime())) / 1000L
+                delay(1000)
+            }
+        } else {
+            connectedSince = null
+            sessionSeconds = 0L
+        }
+    }
     val scope = rememberCoroutineScope()
     val network = remember(refresh, tunnelStatus) { networkType(context, tunnelStatus) }
     val diagnostics = remember(refresh, tunnelStatus) { networkDiagnostics(context) }
@@ -179,7 +198,7 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
     }
     LaunchedEffect(page, tunnelStatus) {
         traffic = null
-        if (page != 3 || tunnelStatus != TunnelStatus.CONNECTED) return@LaunchedEffect
+        if (page !in listOf(0, 3) || tunnelStatus != TunnelStatus.CONNECTED) return@LaunchedEffect
         while (true) {
             val result = withContext(Dispatchers.IO) { controller.trafficSnapshot() }
             result.onSuccess { traffic = it; trafficError = "" }
@@ -208,7 +227,7 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                     Image(painterResource(R.drawable.tmc_vpn_logo_3d), contentDescription = "Logo", modifier = Modifier.size(62.dp))
                     Column {
                         Text("TMC VPN", fontSize = 25.sp, fontWeight = FontWeight.Black, color = Color.White)
-                        Text("ULTIMATE 4.4 • Proveedores WireGuard", fontSize = 11.sp, color = Color.LightGray)
+                        Text("V4.5 • Proveedores WireGuard", fontSize = 11.sp, color = Color.LightGray)
                     }
                 }
                 Spacer(Modifier.height(12.dp))
@@ -217,25 +236,41 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
                     when (page) {
                         0 -> {
-                            Spacer(Modifier.height(14.dp))
-                            Image(painterResource(R.drawable.tmc_vpn_logo_3d), contentDescription = null, modifier = Modifier.size(140.dp))
                             val active = tunnelStatus == TunnelStatus.CONNECTED
-                            Text(when (tunnelStatus) { TunnelStatus.CONNECTED -> "TÚNEL ACTIVO"; TunnelStatus.CONNECTING -> "CONECTANDO…"; TunnelStatus.ERROR -> "ERROR DE CONEXIÓN"; else -> "DESCONECTADO" }, color = if (active) Green else Red, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                            Text(message, textAlign = TextAlign.Center, color = Color.LightGray)
-                            Spacer(Modifier.height(16.dp))
-                            Text("Proveedor de conexión", color = Cyan, fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth())
-                            Text("WireGuard • Perfiles autorizados", color = Color.LightGray, modifier = Modifier.fillMaxWidth())
+                            val statusText = when (tunnelStatus) {
+                                TunnelStatus.CONNECTED -> "Túnel activo"
+                                TunnelStatus.CONNECTING -> "Conectando…"
+                                TunnelStatus.ERROR -> "Error de conexión"
+                                else -> "VPN desconectada"
+                            }
                             val availableProviders = remember(catalogVersion) { catalog.list() }
                             var providerExpanded by remember { mutableStateOf(false) }
                             val chosenProvider = availableProviders.firstOrNull { it.id == selectedServerId }
+                            TmcStatusCard(status = statusText, detail = message)
+                            Spacer(Modifier.height(18.dp))
+                            TmcConnectionButton(
+                                connected = active,
+                                enabled = hasProfile && !busy && tunnelStatus != TunnelStatus.CONNECTING,
+                                onClick = { toggleConnection() }
+                            )
+                            Spacer(Modifier.height(10.dp))
+                            Text(
+                                if (active) "%02d:%02d:%02d".format(java.util.Locale.US, sessionSeconds / 3600, (sessionSeconds / 60) % 60, sessionSeconds % 60) else "00:00:00",
+                                color = TmcColors.TextPrimary,
+                                fontSize = 25.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text("Tiempo observado en esta pantalla", color = TmcColors.TextSecondary, fontSize = 12.sp)
+                            Spacer(Modifier.height(16.dp))
+                            Text("SERVIDOR SELECCIONADO", color = TmcColors.Accent, modifier = Modifier.fillMaxWidth(), fontWeight = FontWeight.Bold)
                             Box(Modifier.fillMaxWidth()) {
-                                OutlinedButton(
-                                    onClick = { providerExpanded = true },
+                                TmcServerCard(
+                                    name = chosenProvider?.name ?: "Seleccionar proveedor / servidor",
+                                    subtitle = "WireGuard • Perfil autorizado",
+                                    selected = chosenProvider != null,
                                     enabled = tunnelStatus == TunnelStatus.DISCONNECTED && !busy,
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Text(chosenProvider?.name ?: "Seleccionar proveedor / servidor")
-                                }
+                                    onClick = { providerExpanded = true }
+                                )
                                 DropdownMenu(expanded = providerExpanded, onDismissRequest = { providerExpanded = false }) {
                                     if (availableProviders.isEmpty()) {
                                         DropdownMenuItem(text = { Text("Importa primero un perfil .conf") }, onClick = { providerExpanded = false })
@@ -263,14 +298,20 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                                     }
                                 }
                             }
-                            Text("WireGuard utiliza claves y perfiles .conf, no usuario y contraseña. Otros protocolos requieren integración adicional.", color = Color.LightGray, fontSize = 12.sp)
                             Spacer(Modifier.height(12.dp))
-                            Button(onClick = { toggleConnection() }, enabled = hasProfile && !busy, modifier = Modifier.fillMaxWidth()) {
-                                Text(if (busy) "Procesando…" else if (active) "Desconectar" else "Conectar WireGuard")
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                TmcTrafficCard("RECIBIDO", traffic?.let { formatTraffic(it.receivedBytes) }, Modifier.weight(1f))
+                                TmcTrafficCard("ENVIADO", traffic?.let { formatTraffic(it.sentBytes) }, Modifier.weight(1f))
                             }
-                            Button(onClick = { picker.launch(arrayOf("*/*")) }, enabled = tunnelStatus == TunnelStatus.DISCONNECTED && !busy) { Text("Importar perfil .conf") }
+                            if (active && traffic == null) Text(trafficError, color = TmcColors.TextSecondary, fontSize = 12.sp)
+                            Spacer(Modifier.height(12.dp))
+                            Button(
+                                onClick = { picker.launch(arrayOf("*/*")) },
+                                enabled = tunnelStatus == TunnelStatus.DISCONNECTED && !busy,
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Importar perfil .conf") }
+                            Text("Los perfiles requieren una conexión a Internet existente. WireGuard no proporciona datos gratuitos.", color = TmcColors.TextSecondary, fontSize = 12.sp)
                             Info("Red", network)
-                            Info("Estado", if (active) "WireGuard reporta túnel UP. Comprueba conectividad y DNS." else "No hay túnel activo.")
                             Info("Recuperación de red", lastRecoveryMessage)
                         }
                         1 -> {
