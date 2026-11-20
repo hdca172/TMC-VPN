@@ -9,6 +9,9 @@ import android.net.VpnService
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.AnimatedVisibility
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -62,7 +65,11 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun UltimateApp(context: Context, controller: WireGuardController) {
     var page by remember { mutableIntStateOf(0) }
+    var menuExpanded by remember { mutableStateOf(false) }
     var welcome by remember { mutableStateOf(true) }
+    BackHandler(enabled = !welcome && (menuExpanded || page != 0)) {
+        if (menuExpanded) menuExpanded = false else page = 0
+    }
     var refresh by remember { mutableIntStateOf(0) }
     var hasProfile by remember { mutableStateOf(false) }
     val profileStore = remember { SecureProfileStore(context) }
@@ -233,8 +240,9 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                 Spacer(Modifier.height(12.dp))
                 Text(pages[page], fontSize = 21.sp, fontWeight = FontWeight.Bold, color = Cyan)
                 Spacer(Modifier.height(10.dp))
-                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
-                    when (page) {
+                Crossfade(targetState = page, label = "Navegación TMC VPN", modifier = Modifier.weight(1f)) { currentPage ->
+                    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
+                    when (currentPage) {
                         0 -> {
                             val active = tunnelStatus == TunnelStatus.CONNECTED
                             val statusText = when (tunnelStatus) {
@@ -499,7 +507,7 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                                 "La vigilancia funciona mientras la actividad está visible. No es un servicio permanente en segundo plano ni un kill switch."
                             )
                             Info("Versión instalada", context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "No disponible")
-                            Info("Interfaz en desarrollo", "TMC VPN V4.6-P4 • APK de prueba, sin publicación de versión final.")
+                            Info("Interfaz en desarrollo", "TMC VPN V4.6-P5 • APK de prueba, sin publicación de versión final.")
                             Button(onClick = { welcome = true }, modifier = Modifier.fillMaxWidth()) {
                                 Text("Pantalla de bienvenida")
                             }
@@ -511,15 +519,53 @@ private fun UltimateApp(context: Context, controller: WireGuardController) {
                         }
                     }
                 }
-                HorizontalDivider(color = Color(0xFF29425F))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    listOf(0, 1, 2, 3).forEach { i ->
-                        Text(pages[i], modifier = Modifier.clickable { page = i }.padding(8.dp), fontSize = 11.sp, color = if (page == i) Cyan else Color.LightGray)
-                    }
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    listOf(4, 5, 6).forEach { i ->
-                        Text(pages[i], modifier = Modifier.clickable { page = i }.padding(8.dp), fontSize = 11.sp, color = if (page == i) Cyan else Color.LightGray)
+                HorizontalDivider(color = Color(0xFF29425F))
+                NavigationBar(containerColor = TmcColors.Surface) {
+                    listOf(0, 1, 3, 5).forEach { destination ->
+                        val label = pages[destination]
+                        NavigationBarItem(
+                            selected = page == destination,
+                            onClick = { page = destination; menuExpanded = false },
+                            icon = { Text(when (destination) {
+                                0 -> "⌂"
+                                1 -> "◈"
+                                3 -> "▥"
+                                else -> "⚙"
+                            }, fontSize = 20.sp) },
+                            label = { Text(label, fontSize = 10.sp) },
+                            alwaysShowLabel = true,
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = TmcColors.Accent,
+                                selectedTextColor = TmcColors.Accent,
+                                indicatorColor = TmcColors.Background,
+                                unselectedIconColor = TmcColors.TextSecondary,
+                                unselectedTextColor = TmcColors.TextSecondary
+                            )
+                        )
+                    }
+                    NavigationBarItem(
+                        selected = page in listOf(2, 4, 6),
+                        onClick = { menuExpanded = !menuExpanded },
+                        icon = { Text("☰", fontSize = 20.sp) },
+                        label = { Text("Más", fontSize = 10.sp) },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = TmcColors.Accent,
+                            selectedTextColor = TmcColors.Accent,
+                            indicatorColor = TmcColors.Background,
+                            unselectedIconColor = TmcColors.TextSecondary,
+                            unselectedTextColor = TmcColors.TextSecondary
+                        )
+                    )
+                }
+                AnimatedVisibility(visible = menuExpanded) {
+                    Column(Modifier.fillMaxWidth().background(TmcColors.Surface, RoundedCornerShape(16.dp)).padding(8.dp)) {
+                        listOf(2, 4, 6).forEach { destination ->
+                            TextButton(
+                                modifier = Modifier.fillMaxWidth(),
+                                onClick = { page = destination; menuExpanded = false }
+                            ) { Text(pages[destination], color = if (page == destination) TmcColors.Accent else TmcColors.TextPrimary) }
+                        }
                     }
                 }
             }
