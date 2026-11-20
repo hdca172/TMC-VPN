@@ -66,10 +66,10 @@ class MainActivity : ComponentActivity() {
 private fun UltimateApp(context: Context, controller: WireGuardController) {
     var page by remember { mutableIntStateOf(0) }
     var menuExpanded by remember { mutableStateOf(false) }
+    var welcome by remember { mutableStateOf(true) }
     BackHandler(enabled = !welcome && (menuExpanded || page != 0)) {
         if (menuExpanded) menuExpanded = false else page = 0
     }
-    var welcome by remember { mutableStateOf(true) }
     var refresh by remember { mutableIntStateOf(0) }
     var hasProfile by remember { mutableStateOf(false) }
     val profileStore = remember { SecureProfileStore(context) }
